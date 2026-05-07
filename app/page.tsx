@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { flushSync } from "react-dom";
 import type { User } from "@supabase/supabase-js";
 
 /** Supabase rejects bursts of OTP / magic-link emails (429); map for clearer UI. */
@@ -906,9 +907,15 @@ export default function Home() {
     }
 
     if (!canEdit) {
-      dragSnap.element.style.removeProperty("left");
-      dragSnap.element.style.removeProperty("top");
-      dragSnap.element.style.removeProperty("width");
+      if (dragSnap.mode === "move") {
+        dragSnap.element.style.removeProperty("left");
+        dragSnap.element.style.removeProperty("top");
+      } else {
+        dragSnap.element.style.removeProperty("width");
+      }
+      flushSync(() => {
+        setImagesByBoard((c) => ({ ...c }));
+      });
       dragRef.current = null;
       lastDragAppliedRef.current = null;
       return;
@@ -921,9 +928,15 @@ export default function Home() {
     }
 
     if (cancelled) {
-      dragSnap.element.style.removeProperty("left");
-      dragSnap.element.style.removeProperty("top");
-      dragSnap.element.style.removeProperty("width");
+      if (dragSnap.mode === "move") {
+        dragSnap.element.style.removeProperty("left");
+        dragSnap.element.style.removeProperty("top");
+      } else {
+        dragSnap.element.style.removeProperty("width");
+      }
+      flushSync(() => {
+        setImagesByBoard((c) => ({ ...c }));
+      });
       dragRef.current = null;
       lastDragAppliedRef.current = null;
       return;
@@ -935,9 +948,12 @@ export default function Home() {
       (entry) => entry.id === dragSnap.imageId,
     );
 
-    dragSnap.element.style.removeProperty("left");
-    dragSnap.element.style.removeProperty("top");
-    dragSnap.element.style.removeProperty("width");
+    if (dragSnap.mode === "move") {
+      dragSnap.element.style.removeProperty("left");
+      dragSnap.element.style.removeProperty("top");
+    } else {
+      dragSnap.element.style.removeProperty("width");
+    }
 
     const last = lastDragAppliedRef.current;
     lastDragAppliedRef.current = null;
@@ -949,6 +965,9 @@ export default function Home() {
       last.imageKey !== dragSnap.imageKey ||
       !priorImage
     ) {
+      flushSync(() => {
+        setImagesByBoard((c) => ({ ...c }));
+      });
       return;
     }
 
@@ -972,6 +991,9 @@ export default function Home() {
       patchedImage.y <= 100.01;
 
     if (!saneGeom) {
+      flushSync(() => {
+        setImagesByBoard((c) => ({ ...c }));
+      });
       return;
     }
 
@@ -990,7 +1012,14 @@ export default function Home() {
             row.width === list[idx]?.width,
         );
 
-      if (same) return current;
+      if (same) {
+        const bumped = {
+          ...current,
+          [last.imageKey]: [...list],
+        };
+        imagesByBoardRef.current = bumped;
+        return bumped;
+      }
 
       const next = {
         ...current,
