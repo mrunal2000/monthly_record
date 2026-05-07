@@ -48,6 +48,8 @@ body {
 .authButton,
 .authUser,
 .authMessage,
+.authProfileTrigger,
+.authProfileSignOutButton,
 .themeSelect,
 .monthButton,
 .monthCountBadge,
@@ -116,6 +118,103 @@ body {
   align-items: center;
   gap: 8px;
   transform: translateX(-50%);
+}
+
+.authSignedIn {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  z-index: 3;
+  height: var(--top-frame-height);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateX(-50%);
+}
+
+.authSignedInDesktop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.authProfileMobile {
+  display: none;
+}
+
+.authProfileTrigger {
+  box-sizing: border-box;
+  width: 34px;
+  height: 34px;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--bg);
+  color: var(--ink);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.authProfileTrigger:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.authProfileBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 140;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.authProfileMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 141;
+  min-width: min(272px, 86vw);
+  padding: 12px 14px;
+  border: var(--frame-border-width) solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow:
+    0 12px 40px rgb(0 0 0 / 0.12),
+    0 2px 8px rgb(0 0 0 / 0.06);
+}
+
+.authProfileEmail {
+  margin: 0 0 12px;
+  font-size: 11px;
+  line-height: 1.35;
+  letter-spacing: 0.02em;
+  word-break: break-all;
+}
+
+.authProfileSignOutButton {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: var(--frame-border-width) solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.authProfileSignOutButton:hover {
+  background: var(--ink);
+  color: var(--bg);
 }
 
 .authInput,
@@ -1117,7 +1216,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     padding-left: max(12px, env(safe-area-inset-left));
   }
 
-  .page:has(.frameManagerBar) {
+  .page.page--desktopEditChrome {
     --mobile-frame-extra: 52px;
   }
 
@@ -1154,6 +1253,11 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     text-overflow: ellipsis;
   }
 
+  .page--signedIn .topTimestamp {
+    right: calc(max(10px, env(safe-area-inset-right)) + 44px);
+    max-width: min(46vw, calc(100vw - 200px));
+  }
+
   .authBar {
     top: env(safe-area-inset-top, 0px);
     left: max(88px, env(safe-area-inset-left));
@@ -1165,9 +1269,47 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     row-gap: 4px;
   }
 
-  .authBar[data-auth-state="signed-in"] {
+  .authSignedIn {
+    position: absolute;
+    top: env(safe-area-inset-top, 0px);
+    right: max(8px, env(safe-area-inset-right));
+    left: auto;
     height: var(--top-frame-height);
-    flex-wrap: wrap;
+    width: auto;
+    transform: none;
+    z-index: 6;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+
+  .authSignedInDesktop {
+    display: none;
+  }
+
+  .authProfileMobile {
+    display: block;
+    position: relative;
+    height: 100%;
+    pointer-events: auto;
+  }
+
+  .authProfileTrigger {
+    width: 32px;
+    height: 32px;
+    touch-action: manipulation;
+  }
+
+  .authProfileTrigger:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 3px;
+  }
+
+  .authProfileMenu {
+    top: calc(100% + 4px);
+  }
+
+  .frameManagerBar {
+    display: none;
   }
 
   .authBar[data-auth-state="signed-out"] {
@@ -1280,8 +1422,40 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     border-radius: 8px;
   }
 
-  .authBar[data-auth-state="signed-in"] .authInput {
-    width: min(44vw, 150px);
+  html[data-theme="minimal"] .authProfileEmail {
+    font-family: var(--font-body);
+    font-size: 12px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--color-muted);
+  }
+
+  html[data-theme="minimal"] .authProfileSignOutButton {
+    border-radius: 8px;
+    border-color: var(--minimal-frame-border);
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  html[data-theme="minimal"] .authProfileTrigger {
+    border-radius: 10px;
+    border-color: var(--minimal-frame-border);
+  }
+
+  html[data-theme="minimal"] .authProfileMenu {
+    border: 1px solid var(--minimal-frame-border);
+    border-radius: 10px;
+    box-shadow:
+      0 10px 30px rgb(15 23 42 / 0.08),
+      0 1px 4px rgb(15 23 42 / 0.04);
+  }
+
+  html[data-theme="minimal"] .authProfileTrigger:focus-visible {
+    outline: 2px solid rgb(0 113 227 / 0.45);
+    outline-offset: 2px;
   }
 
   .monthRail {
@@ -1382,12 +1556,6 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
 
   html[data-theme="minimal"] .monthButton:last-child {
     border-right: 0;
-  }
-
-  .frameManagerBar {
-    left: max(10px, env(safe-area-inset-left));
-    right: max(10px, env(safe-area-inset-right));
-    bottom: max(12px, env(safe-area-inset-bottom));
   }
 
   .accordion {

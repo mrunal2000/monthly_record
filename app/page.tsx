@@ -1,7 +1,14 @@
 "use client";
 
 import type { CSSProperties, ChangeEvent, FormEvent, PointerEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type { User } from "@supabase/supabase-js";
 import { FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
 
@@ -83,6 +90,12 @@ type DragState = {
   imageId: string;
   offsetX: number;
   offsetY: number;
+};
+
+type PendingDragSample = {
+  target: HTMLElement;
+  clientX: number;
+  clientY: number;
 };
 
 type ThemeName = "paper" | "brutalist" | "minimal";
@@ -200,6 +213,60 @@ function getActiveFrameHeightToken(frameCount: number) {
   return getActiveFrameShareToken(frameCount, "--accordion-mobile-collapsed-height");
 }
 
+type LiveClockProps = { theme: ThemeName };
+
+function LiveClock({ theme }: LiveClockProps) {
+  const [now, setNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setNow(new Date());
+    const id = window.setInterval(() => setNow(new Date()), 1000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  return (
+    <time className="topTimestamp" dateTime={now?.toISOString()}>
+      {now
+        ? theme === "minimal"
+          ? formatMinimalTimestamp(now)
+          : new Intl.DateTimeFormat("en", {
+              weekday: "short",
+              month: "short",
+              day: "numeric",
+              hour: "numeric",
+              minute: "2-digit",
+              second: "2-digit",
+            }).format(now)
+        : ""}
+    </time>
+  );
+}
+
+function ProfileMenuGlyph() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden stroke="currentColor" strokeWidth="1.75">
+      <circle cx="12" cy="8" r="4" strokeLinecap="round" />
+      <path strokeLinecap="round" d="M5 21c1.76-5.25 13.33-5.06 14 0" />
+    </svg>
+  );
+}
+
+function useWideLayout(minPx = 768) {
+  const [wide, setWide] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(min-width: ${minPx}px)`);
+    function sync() {
+      setWide(mq.matches);
+    }
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, [minPx]);
+
+  return wide;
+}
+
 export default function Home() {
   const currentMonthIndex = getCurrentMonthIndex();
   const [activeMonthIndex, setActiveMonthIndex] = useState(currentMonthIndex);
@@ -207,12 +274,12 @@ export default function Home() {
   const [openDirection, setOpenDirection] = useState<OpenDirection>("ltr");
   const [imagesByBoard, setImagesByBoard] = useState<Record<string, CanvasImage[]>>({});
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
-  const [now, setNow] = useState<Date | null>(null);
-  const [saveStatus, setSaveStatus] = useState(supabase ? "SUPABASE CONNECTED" : "LOCAL ONLY");
+  const [, setSaveStatus] = useState(supabase ? "SUPABASE CONNECTED" : "LOCAL ONLY");
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [editMode, setEditMode] = useState(false);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>("brutalist");
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
@@ -221,11 +288,43 @@ export default function Home() {
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
   const dragRef = useRef<DragState | null>(null);
+  const dragPaintRafRef = useRef<number | null>(null);
+  const pendingDragSampleRef = useRef<PendingDragSample | null>(null);
   const activeMonth = months[activeMonthIndex];
   const canEdit = Boolean(user);
+  const wideLayout = useWideLayout(768);
+
+  const pastMonthBoardImageCounts = useMemo(
+    () =>
+      months.map((monthMeta) =>
+        categories.reduce(
+          (sum, cat) => sum + (imagesByBoard[`${monthMeta.id}-${cat.id}`]?.length ?? 0),
+          0,
+        ),
+      ),
+    [categories, imagesByBoard],
+  );
+
+  const clearCanvasSelection = useCallback(() => {
+    startTransition(() => {
+      setSelectedImageId(null);
+    });
+  }, []);
 
   useEffect(() => {
-    setNow(new Date());
+    if (!accountMenuOpen) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setAccountMenuOpen(false);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [accountMenuOpen]);
+
+  useEffect(() => {
+    if (!user) setAccountMenuOpen(false);
+  }, [user]);
+
+  useEffect(() => {
     setEditMode(new URLSearchParams(window.location.search).get("edit") === "1");
     let storedTheme = window.localStorage.getItem("monthly-record-theme") as ThemeName | (string & {}) | null;
     if (storedTheme === "gallery") {
@@ -243,9 +342,6 @@ export default function Home() {
     if (storedTheme && themes.some((themeOption) => themeOption.id === storedTheme)) {
       setTheme(storedTheme as ThemeName);
     }
-    const interval = window.setInterval(() => setNow(new Date()), 1000);
-
-    return () => window.clearInterval(interval);
   }, []);
 
   function updateTheme(nextTheme: ThemeName) {
@@ -412,12 +508,6 @@ export default function Home() {
     return dash === -1 ? boardKey : boardKey.slice(0, dash);
   }
 
-  function countImagesForMonth(monthIndex: number) {
-    return categories.reduce(
-      (sum, cat) => sum + (imagesByBoard[boardKey(cat.id, monthIndex)]?.length ?? 0),
-      0,
-    );
-  }
 
   async function patchSupabaseCategoryLabels(categoryId: string, label: string) {
     if (!supabase || !user) return;
@@ -617,23 +707,27 @@ export default function Home() {
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function updateImageFromPointer(event: PointerEvent<HTMLElement>) {
-    if (!canEdit) return;
-
+  function flushPendingDragPaint() {
+    const sample = pendingDragSampleRef.current;
+    pendingDragSampleRef.current = null;
     const drag = dragRef.current;
-    const canvas = event.currentTarget.closest(".imageCanvas");
-    if (!drag || !canvas) return;
+    if (!sample || !drag) return;
 
-    event.stopPropagation();
-    const canvasRect = canvas.getBoundingClientRect();
-    const itemRect = drag.mode === "move" ? event.currentTarget.getBoundingClientRect() : null;
+    const canvasEl = sample.target.closest(".imageCanvas");
+    if (!canvasEl) return;
+
+    const canvasRect = canvasEl.getBoundingClientRect();
+    const itemRect = drag.mode === "move" ? sample.target.getBoundingClientRect() : null;
 
     setImagesByBoard((current) => {
+      const d = dragRef.current;
+      if (!d) return current;
+
       const next = {
         ...current,
-        [drag.imageKey]: (current[drag.imageKey] ?? []).map((image) =>
-          image.id === drag.imageId
-            ? getUpdatedImage(image, event, canvasRect, drag, itemRect)
+        [d.imageKey]: (current[d.imageKey] ?? []).map((image) =>
+          image.id === d.imageId
+            ? getUpdatedImage(image, sample.clientX, sample.clientY, canvasRect, d, itemRect)
             : image,
         ),
       };
@@ -643,23 +737,47 @@ export default function Home() {
     });
   }
 
+  function updateImageFromPointer(event: PointerEvent<HTMLElement>) {
+    if (!canEdit) return;
+
+    const drag = dragRef.current;
+    const canvas = event.currentTarget.closest(".imageCanvas");
+    if (!drag || !canvas) return;
+
+    event.stopPropagation();
+
+    pendingDragSampleRef.current = {
+      target: event.currentTarget,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+
+    if (dragPaintRafRef.current !== null) return;
+
+    dragPaintRafRef.current = window.requestAnimationFrame(() => {
+      dragPaintRafRef.current = null;
+      flushPendingDragPaint();
+    });
+  }
+
   function getUpdatedImage(
     image: CanvasImage,
-    event: PointerEvent<HTMLElement>,
+    clientX: number,
+    clientY: number,
     canvasRect: DOMRect,
     drag: DragState,
     itemRect: DOMRect | null,
   ) {
     if (drag.mode === "resize") {
-      const pointerX = ((event.clientX - canvasRect.left) / canvasRect.width) * 100;
+      const pointerX = ((clientX - canvasRect.left) / canvasRect.width) * 100;
       const nextWidth = pointerX - image.x;
       return { ...image, width: clamp(nextWidth, 16, Math.max(16, 100 - image.x)) };
     }
 
     const itemWidth = itemRect?.width ?? (image.width / 100) * canvasRect.width;
     const itemHeight = itemRect?.height ?? 0;
-    const x = ((event.clientX - canvasRect.left - drag.offsetX) / canvasRect.width) * 100;
-    const y = ((event.clientY - canvasRect.top - drag.offsetY) / canvasRect.height) * 100;
+    const x = ((clientX - canvasRect.left - drag.offsetX) / canvasRect.width) * 100;
+    const y = ((clientY - canvasRect.top - drag.offsetY) / canvasRect.height) * 100;
     const maxX = ((canvasRect.width - itemWidth) / canvasRect.width) * 100;
     const maxY = ((canvasRect.height - itemHeight) / canvasRect.height) * 100;
 
@@ -668,19 +786,37 @@ export default function Home() {
 
   function stopDrag(event: PointerEvent<HTMLElement>) {
     event.stopPropagation();
-    if (!canEdit) return;
 
-    const drag = dragRef.current;
+    if (dragPaintRafRef.current !== null) {
+      window.cancelAnimationFrame(dragPaintRafRef.current);
+      dragPaintRafRef.current = null;
+    }
 
-    if (drag) {
-      const image = imagesByBoardRef.current[drag.imageKey]?.find(
-        (currentImage) => currentImage.id === drag.imageId,
-      );
-      const categoryId = categoryIdFromBoardKey(drag.imageKey);
+    if (!canEdit) {
+      pendingDragSampleRef.current = null;
+      return;
+    }
 
-      if (image && categoryId) {
-        void saveImageRecord(drag.imageKey, categoryId, image);
-      }
+    const dragState = dragRef.current;
+    if (!dragState) {
+      pendingDragSampleRef.current = null;
+      return;
+    }
+
+    pendingDragSampleRef.current = {
+      target: event.currentTarget,
+      clientX: event.clientX,
+      clientY: event.clientY,
+    };
+    flushPendingDragPaint();
+
+    const image = imagesByBoardRef.current[dragState.imageKey]?.find(
+      (currentImage) => currentImage.id === dragState.imageId,
+    );
+    const categoryId = categoryIdFromBoardKey(dragState.imageKey);
+
+    if (image && categoryId) {
+      void saveImageRecord(dragState.imageKey, categoryId, image);
     }
 
     dragRef.current = null;
@@ -779,64 +915,96 @@ export default function Home() {
   }
 
   return (
-    <main className="page" onPointerDown={() => setSelectedImageId(null)}>
-      <time className="topTimestamp" dateTime={now?.toISOString()}>
-        {now
-          ? theme === "minimal"
-            ? formatMinimalTimestamp(now)
-            : new Intl.DateTimeFormat("en", {
-                weekday: "short",
-                month: "short",
-                day: "numeric",
-                hour: "numeric",
-                minute: "2-digit",
-                second: "2-digit",
-              }).format(now)
-          : ""}
-      </time>
+    <main
+      className={["page", user && "page--signedIn", canEdit && wideLayout && "page--desktopEditChrome"]
+        .filter(Boolean)
+        .join(" ")}
+      onPointerDown={clearCanvasSelection}
+    >
+      <LiveClock theme={theme} />
       {editMode || user ? (
-        <form
-          className="authBar"
-          data-auth-state={user ? "signed-in" : "signed-out"}
-          onSubmit={signIn}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          {user ? (
-            <>
+        user ? (
+          <div className="authSignedIn" onPointerDown={(event) => event.stopPropagation()}>
+            <div className="authSignedInDesktop">
               <span className="authUser">{user.email}</span>
-              <button className="authButton" type="button" onClick={signOut}>
+              <button className="authButton" type="button" onClick={() => void signOut()}>
                 SIGN OUT
               </button>
-            </>
-          ) : (
-            <>
-              <h2
-                className={`authScreenHeadline${theme === "minimal" ? " authScreenHeadline--minimal" : ""}`}
-                id="auth-screen-title"
+            </div>
+            <div className="authProfileMobile">
+              <button
+                type="button"
+                className="authProfileTrigger"
+                aria-label="Account menu"
+                aria-expanded={accountMenuOpen}
+                aria-haspopup="dialog"
+                onClick={() => setAccountMenuOpen((open) => !open)}
               >
-                {theme === "minimal" ? "Sign in to edit" : "SIGN IN TO EDIT"}
-              </h2>
-              <input
-                className="authInput"
-                type="email"
-                placeholder="email to edit"
-                value={authEmail}
-                onChange={(event) => setAuthEmail(event.target.value)}
-                autoComplete="email"
-                inputMode="email"
-              />
-              <button className="authButton" type="submit">
-                SIGN IN
+                <ProfileMenuGlyph />
               </button>
-              {authMessage ? <span className="authMessage">{authMessage}</span> : null}
-              {editMode ? (
-                <button className="authScreenDismiss" type="button" onClick={leaveEditFlow}>
-                  {theme === "minimal" ? "View without signing in" : "VIEW WITHOUT SIGNING IN"}
-                </button>
+              {accountMenuOpen ? (
+                <>
+                  <button
+                    type="button"
+                    className="authProfileBackdrop"
+                    aria-label="Close account menu"
+                    onClick={() => setAccountMenuOpen(false)}
+                  />
+                  <div
+                    className="authProfileMenu"
+                    role="dialog"
+                    aria-label="Account"
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    <p className="authProfileEmail">{user.email}</p>
+                    <button
+                      type="button"
+                      className="authProfileSignOutButton"
+                      onClick={() => {
+                        setAccountMenuOpen(false);
+                        void signOut();
+                      }}
+                    >
+                      {theme === "minimal" ? "Sign out" : "SIGN OUT"}
+                    </button>
+                  </div>
+                </>
               ) : null}
-            </>
-          )}
-        </form>
+            </div>
+          </div>
+        ) : (
+          <form
+            className="authBar"
+            data-auth-state="signed-out"
+            onSubmit={signIn}
+            onPointerDown={(event) => event.stopPropagation()}
+          >
+            <h2
+              className={`authScreenHeadline${theme === "minimal" ? " authScreenHeadline--minimal" : ""}`}
+              id="auth-screen-title"
+            >
+              {theme === "minimal" ? "Sign in to edit" : "SIGN IN TO EDIT"}
+            </h2>
+            <input
+              className="authInput"
+              type="email"
+              placeholder="email to edit"
+              value={authEmail}
+              onChange={(event) => setAuthEmail(event.target.value)}
+              autoComplete="email"
+              inputMode="email"
+            />
+            <button className="authButton" type="submit">
+              SIGN IN
+            </button>
+            {authMessage ? <span className="authMessage">{authMessage}</span> : null}
+            {editMode ? (
+              <button className="authScreenDismiss" type="button" onClick={leaveEditFlow}>
+                {theme === "minimal" ? "View without signing in" : "VIEW WITHOUT SIGNING IN"}
+              </button>
+            ) : null}
+          </form>
+        )
       ) : null}
       <label className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
         <span className="themePickerPrefix">Theme:</span>
@@ -859,7 +1027,7 @@ export default function Home() {
       <nav className="monthRail" aria-label="Monthly favorite boards">
         {months.map((month, index) => {
           const isPastMonth = index < currentMonthIndex;
-          const pastCount = isPastMonth ? countImagesForMonth(index) : null;
+          const pastCount = isPastMonth ? pastMonthBoardImageCounts[index] : null;
           const showEmptyPastBadge = pastCount !== null && pastCount === 0;
           const navLabel = theme === "minimal" ? formatMonthNavLabel(month.id) : month.label;
           return (
@@ -1088,7 +1256,7 @@ export default function Home() {
                       </span>
                     ) : null}
                   </span>
-                  <span className="imageCanvas" onPointerDown={() => setSelectedImageId(null)}>
+                  <span className="imageCanvas" onPointerDown={clearCanvasSelection}>
                     {boardImages.map((image) => (
                       <span
                         key={image.id}
