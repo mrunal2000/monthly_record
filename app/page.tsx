@@ -753,8 +753,9 @@ export default function Home() {
 
       <nav className="monthRail" aria-label="Monthly favorite boards">
         {months.map((month, index) => {
-          const pastCount =
-            index < currentMonthIndex ? countImagesForMonth(index) : null;
+          const isPastMonth = index < currentMonthIndex;
+          const pastCount = isPastMonth ? countImagesForMonth(index) : null;
+          const showEmptyPastBadge = pastCount !== null && pastCount === 0;
           return (
             <button
               key={month.id}
@@ -763,9 +764,7 @@ export default function Home() {
               data-current={index === currentMonthIndex}
               type="button"
               aria-label={
-                pastCount !== null
-                  ? `${month.label}, ${pastCount === 1 ? "1 item" : `${pastCount} items`}`
-                  : month.label
+                showEmptyPastBadge ? `${month.label}, empty` : month.label
               }
               onClick={() => {
                 setActiveMonthIndex(index);
@@ -773,8 +772,10 @@ export default function Home() {
               }}
             >
               <span aria-hidden="true">{month.label}</span>
-              {pastCount !== null ? (
-                <span className="monthCountBadge" aria-hidden="true">{`[${pastCount}]`}</span>
+              {showEmptyPastBadge ? (
+                <span className="monthCountBadge" aria-hidden="true">
+                  [0]
+                </span>
               ) : null}
             </button>
           );
