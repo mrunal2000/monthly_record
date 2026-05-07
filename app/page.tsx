@@ -6,12 +6,53 @@ import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
 
-type Item = {
+type Category = {
+  id: string;
   label: string;
+  note: string;
   color: string;
   textColor: string;
-  note: string;
 };
+
+const CATEGORIES_STORAGE_KEY = "monthly-record-categories";
+
+const DEFAULT_CATEGORIES: Category[] = [
+  {
+    id: "media",
+    label: "MEDIA",
+    note: "Add stills, posters, scenes, and anything from what you watched.",
+    color: "var(--category-media)",
+    textColor: "var(--category-on-dark)",
+  },
+  {
+    id: "books",
+    label: "BOOKS",
+    note: "Add covers, spreads, quotes, and references you want to arrange.",
+    color: "var(--category-books)",
+    textColor: "var(--category-on-dark)",
+  },
+  {
+    id: "misc",
+    label: "MISC",
+    note: "Add anything that does not fit neatly anywhere else.",
+    color: "var(--category-misc)",
+    textColor: "var(--category-on-dark)",
+  },
+  {
+    id: "wishlist",
+    label: "WISHLIST",
+    note: "Add things you want, are considering, or want to remember.",
+    color: "var(--category-wishlist)",
+    textColor: "var(--category-on-light)",
+  },
+  {
+    id: "food",
+    label: "FOOD",
+    note: "Add meals, places, recipes, cravings, and favorite bites.",
+    color: "var(--category-food)",
+    textColor: "var(--category-on-dark)",
+  },
+];
 
 type CanvasImage = {
   id: string;
@@ -69,38 +110,6 @@ const months = [
   { id: "dec", label: "DEC" },
 ];
 
-const items: Item[] = [
-  {
-    label: "MEDIA",
-    color: "var(--category-media)",
-    textColor: "var(--category-on-dark)",
-    note: "Add stills, posters, scenes, and anything from what you watched.",
-  },
-  {
-    label: "BOOKS",
-    color: "var(--category-books)",
-    textColor: "var(--category-on-dark)",
-    note: "Add covers, spreads, quotes, and references you want to arrange.",
-  },
-  {
-    label: "MISC",
-    color: "var(--category-misc)",
-    textColor: "var(--category-on-dark)",
-    note: "Add anything that does not fit neatly anywhere else.",
-  },
-  {
-    label: "WISHLIST",
-    color: "var(--category-wishlist)",
-    textColor: "var(--category-on-light)",
-    note: "Add things you want, are considering, or want to remember.",
-  },
-  {
-    label: "FOOD",
-    color: "var(--category-food)",
-    textColor: "var(--category-on-dark)",
-    note: "Add meals, places, recipes, cravings, and favorite bites.",
-  },
-];
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -110,8 +119,32 @@ function getCurrentMonthIndex() {
   return new Date().getMonth();
 }
 
-function getActiveFrameWidthToken() {
-  const collapsedFrames = items.length - 1;
+function canonicalBoardKey(boardKey: string) {
+  const dash = boardKey.indexOf("-");
+  if (dash === -1) return boardKey;
+  const monthId = boardKey.slice(0, dash);
+  const tail = boardKey.slice(dash + 1);
+  if (/^\d+$/.test(tail)) {
+    const idx = Number.parseInt(tail, 10);
+    const def = DEFAULT_CATEGORIES[idx];
+    if (def) return `${monthId}-${def.id}`;
+  }
+  return boardKey;
+}
+
+function categoryIdFromBoardKey(boardKey: string) {
+  const dash = boardKey.indexOf("-");
+  if (dash === -1) return "";
+  return boardKey.slice(dash + 1);
+}
+
+function colorsForCategoryIndex(index: number) {
+  const def = DEFAULT_CATEGORIES[index % DEFAULT_CATEGORIES.length];
+  return def ? { color: def.color, textColor: def.textColor } : { color: DEFAULT_CATEGORIES[0].color, textColor: DEFAULT_CATEGORIES[0].textColor };
+}
+
+function getActiveFrameWidthToken(frameCount: number) {
+  const collapsedFrames = frameCount - 1;
   const collapsedWidth = Array.from(
     { length: collapsedFrames },
     () => "var(--collapsed-width)",
@@ -138,7 +171,14 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [theme, setTheme] = useState<ThemeName>("gallery");
+  const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
+  const [categoriesHydrated, setCategoriesHydrated] = useState(false);
+  const [newFrameName, setNewFrameName] = useState("");
+  const [renameDraft, setRenameDraft] = useState<{ id: string; label: string; note: string } | null>(
+    null,
+  );
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
+  const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const dragRef = useRef<DragState | null>(null);
   const activeMonth = months[activeMonthIndex];
   const canEdit = Boolean(user);
@@ -172,6 +212,62 @@ export default function Home() {
   useEffect(() => {
     imagesByBoardRef.current = imagesByBoard;
   }, [imagesByBoard]);
+
+  useEffect(() => {
+    categoriesRef.current = categories;
+  }, [categories]);
+
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(CATEGORIES_STORAGE_KEY);
+      if (!raw) {
+        setCategoriesHydrated(true);
+        return;
+      }
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) {
+        setCategoriesHydrated(true);
+        return;
+      }
+      const next: Category[] = [];
+      for (const row of parsed) {
+        if (!row || typeof row !== "object") continue;
+        const r = row as Record<string, unknown>;
+        const id = typeof r.id === "string" && r.id.trim() ? r.id.trim() : "";
+        if (!id) continue;
+        const label = typeof r.label === "string" ? r.label : "";
+        const note = typeof r.note === "string" ? r.note : "";
+        const color =
+          typeof r.color === "string" && r.color ? r.color : DEFAULT_CATEGORIES[0].color;
+        const textColor =
+          typeof r.textColor === "string" && r.textColor
+            ? r.textColor
+            : DEFAULT_CATEGORIES[0].textColor;
+        next.push({
+          id,
+          label: label.trim() || "UNTITLED",
+          note,
+          color,
+          textColor,
+        });
+      }
+      if (next.length > 0) setCategories(next);
+    } catch {
+      /* ignore */
+    }
+    setCategoriesHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!categoriesHydrated) return;
+    window.localStorage.setItem(CATEGORIES_STORAGE_KEY, JSON.stringify(categories));
+  }, [categories, categoriesHydrated]);
+
+  useEffect(() => {
+    setActiveIndex((index) =>
+      clamp(index, 0, Math.max(0, categories.length - 1)),
+    );
+  }, [categories.length]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -208,8 +304,9 @@ export default function Home() {
 
       const grouped = (data as FavoriteItemRow[]).reduce<Record<string, CanvasImage[]>>(
         (boards, row) => {
-          boards[row.board_key] = [
-            ...(boards[row.board_key] ?? []),
+          const key = canonicalBoardKey(row.board_key);
+          boards[key] = [
+            ...(boards[key] ?? []),
             {
               id: row.id,
               src: row.image_url,
@@ -234,12 +331,82 @@ export default function Home() {
     void loadFavorites();
   }, []);
 
-  function boardKey(categoryIndex: number, monthIndex = activeMonthIndex) {
-    return `${months[monthIndex].id}-${categoryIndex}`;
+  function boardKey(categoryId: string, monthIndex = activeMonthIndex) {
+    return `${months[monthIndex].id}-${categoryId}`;
   }
 
-  function categoryIndexFromBoardKey(imageKey: string) {
-    return Number(imageKey.split("-").at(-1));
+  function monthIdFromBoardKey(boardKey: string) {
+    const dash = boardKey.indexOf("-");
+    return dash === -1 ? boardKey : boardKey.slice(0, dash);
+  }
+
+  function countImagesForMonth(monthIndex: number) {
+    return categories.reduce(
+      (sum, cat) => sum + (imagesByBoard[boardKey(cat.id, monthIndex)]?.length ?? 0),
+      0,
+    );
+  }
+
+  async function patchSupabaseCategoryLabels(categoryId: string, label: string) {
+    if (!supabase || !user) return;
+
+    const { error } = await supabase
+      .from(FAVORITES_TABLE)
+      .update({
+        category_label: label,
+        updated_at: new Date().toISOString(),
+      })
+      .like("board_key", `%-${categoryId}`);
+
+    if (error) console.error("Could not update saved labels:", error.message);
+  }
+
+  function addFrameFromInput() {
+    if (!canEdit) return;
+
+    const name = newFrameName.trim();
+    if (!name) return;
+
+    const { color, textColor } = colorsForCategoryIndex(categoriesRef.current.length);
+    const id = crypto.randomUUID();
+    setCategories((prev) => {
+      const next = [
+        ...prev,
+        {
+          id,
+          label: name.toUpperCase(),
+          note: "",
+          color,
+          textColor,
+        },
+      ];
+      setActiveIndex(next.length - 1);
+      setOpenDirection("ltr");
+
+      return next;
+    });
+
+    setNewFrameName("");
+  }
+
+  function applyRename() {
+    if (!renameDraft || !canEdit) return;
+
+    const label = renameDraft.label.trim();
+    if (!label) return;
+
+    const nextLabel = label.toUpperCase();
+    void patchSupabaseCategoryLabels(renameDraft.id, nextLabel);
+
+    setCategories((prev) =>
+      prev.map((category) =>
+        category.id === renameDraft.id
+          ? { ...category, label: nextLabel, note: renameDraft.note.trim() }
+          : category,
+      ),
+    );
+
+    setRenameDraft(null);
   }
 
   function safeFileName(fileName: string) {
@@ -269,11 +436,7 @@ export default function Home() {
     };
   }
 
-  async function saveImageRecord(
-    imageKey: string,
-    categoryIndex: number,
-    image: CanvasImage,
-  ) {
+  async function saveImageRecord(imageKey: string, categoryId: string, image: CanvasImage) {
     if (!canEdit) {
       setSaveStatus("SIGN IN TO EDIT");
       return;
@@ -285,13 +448,19 @@ export default function Home() {
     }
 
     setSaveStatus("SAVING");
-    const monthId = imageKey.split("-")[0];
+    const monthId = monthIdFromBoardKey(imageKey);
+    const cats = categoriesRef.current;
+    const categoryIndex = cats.findIndex((c) => c.id === categoryId);
+    const categoryLabel =
+      cats[categoryIndex >= 0 ? categoryIndex : 0]?.label ??
+      cats[0]?.label ??
+      "?";
     const { error } = await supabase.from(FAVORITES_TABLE).upsert({
       id: image.id,
-      board_key: imageKey,
+      board_key: canonicalBoardKey(imageKey),
       month_id: monthId,
-      category_index: categoryIndex,
-      category_label: items[categoryIndex].label,
+      category_index: categoryIndex >= 0 ? categoryIndex : 0,
+      category_label: categoryLabel,
       image_url: image.src,
       storage_path: image.storagePath,
       x: image.x,
@@ -310,7 +479,7 @@ export default function Home() {
     setSaveStatus("SAVED");
   }
 
-  async function addImages(event: ChangeEvent<HTMLInputElement>, categoryIndex: number) {
+  async function addImages(event: ChangeEvent<HTMLInputElement>, categoryId: string) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
     if (!canEdit) {
@@ -319,7 +488,7 @@ export default function Home() {
       return;
     }
 
-    const imageKey = boardKey(categoryIndex);
+    const imageKey = boardKey(categoryId);
 
     try {
       setSaveStatus(supabase ? "SAVING" : "LOCAL ONLY");
@@ -351,7 +520,7 @@ export default function Home() {
       });
 
       await Promise.all(
-        nextImages.map((image) => saveImageRecord(imageKey, categoryIndex, image)),
+        nextImages.map((image) => saveImageRecord(imageKey, categoryId, image)),
       );
     } catch (error) {
       console.error(
@@ -462,10 +631,10 @@ export default function Home() {
       const image = imagesByBoardRef.current[drag.imageKey]?.find(
         (currentImage) => currentImage.id === drag.imageId,
       );
-      const categoryIndex = categoryIndexFromBoardKey(drag.imageKey);
+      const categoryId = categoryIdFromBoardKey(drag.imageKey);
 
-      if (image && Number.isFinite(categoryIndex)) {
-        void saveImageRecord(drag.imageKey, categoryIndex, image);
+      if (image && categoryId) {
+        void saveImageRecord(drag.imageKey, categoryId, image);
       }
     }
 
@@ -475,7 +644,7 @@ export default function Home() {
   function rotateImage(imageKey: string, imageId: string, amount: number) {
     if (!canEdit) return;
 
-    const categoryIndex = categoryIndexFromBoardKey(imageKey);
+    const categoryId = categoryIdFromBoardKey(imageKey);
     const image = imagesByBoardRef.current[imageKey]?.find(
       (currentImage) => currentImage.id === imageId,
     );
@@ -493,8 +662,8 @@ export default function Home() {
       return next;
     });
 
-    if (updatedImage && Number.isFinite(categoryIndex)) {
-      void saveImageRecord(imageKey, categoryIndex, updatedImage);
+    if (updatedImage && categoryId) {
+      void saveImageRecord(imageKey, categoryId, updatedImage);
     }
   }
 
@@ -612,38 +781,75 @@ export default function Home() {
       </label>
 
       <nav className="monthRail" aria-label="Monthly favorite boards">
-        {months.map((month, index) => (
-          <button
-            key={month.id}
-            className="monthButton"
-            data-active={index === activeMonthIndex}
-            data-current={index === currentMonthIndex}
-            type="button"
-            onClick={() => {
-              setActiveMonthIndex(index);
-              setSelectedImageId(null);
-            }}
-          >
-            {month.label}
-          </button>
-        ))}
+        {months.map((month, index) => {
+          const pastCount =
+            index < currentMonthIndex ? countImagesForMonth(index) : null;
+          return (
+            <button
+              key={month.id}
+              className="monthButton"
+              data-active={index === activeMonthIndex}
+              data-current={index === currentMonthIndex}
+              type="button"
+              aria-label={
+                pastCount !== null
+                  ? `${month.label}, ${pastCount === 1 ? "1 item" : `${pastCount} items`}`
+                  : month.label
+              }
+              onClick={() => {
+                setActiveMonthIndex(index);
+                setSelectedImageId(null);
+              }}
+            >
+              <span aria-hidden="true">{month.label}</span>
+              {pastCount !== null ? (
+                <span className="monthCountBadge" aria-hidden="true">{`[${pastCount}]`}</span>
+              ) : null}
+            </button>
+          );
+        })}
       </nav>
+
+      {canEdit ? (
+        <div className="frameManagerBar" onPointerDown={(event) => event.stopPropagation()}>
+          <label className="srOnly" htmlFor="new-frame-name">
+            New frame name
+          </label>
+          <input
+            id="new-frame-name"
+            className="frameManagerInput"
+            type="text"
+            placeholder="New frame name"
+            value={newFrameName}
+            onChange={(event) => setNewFrameName(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                addFrameFromInput();
+              }
+            }}
+          />
+          <button className="frameManagerButton" type="button" onClick={() => addFrameFromInput()}>
+            ADD FRAME
+          </button>
+        </div>
+      ) : null}
 
       <section
         key={activeMonth.id}
         className="accordion"
         aria-label={`${activeMonth.label} favorite category cards`}
-        style={{ "--active-frame-width": getActiveFrameWidthToken() } as CSSProperties}
+        style={{ "--active-frame-width": getActiveFrameWidthToken(categories.length) } as CSSProperties}
       >
-        {items.map((item, index) => {
+        {categories.map((item, index) => {
           const isActive = index === activeIndex;
-          const imageKey = boardKey(index);
+          const imageKey = boardKey(item.id);
           const boardImages = imagesByBoard[imageKey] ?? [];
           const selectedImage = boardImages.find((image) => image.id === selectedImageId);
 
           return (
             <article
-              key={item.label}
+              key={item.id}
               className="frame"
               data-active={isActive}
               data-direction={isActive ? openDirection : undefined}
@@ -669,11 +875,77 @@ export default function Home() {
                 <span className="frameContent" aria-hidden={!isActive}>
                   <span className="canvasHeader">
                     <span>
-                      <span className="frameTitle">{item.label}</span>
-                      <span className="frameNote">{item.note}</span>
+                      {renameDraft?.id === item.id ? (
+                        <span
+                          className="renameForm"
+                          onPointerDown={(event) => event.stopPropagation()}
+                        >
+                          <label className="srOnly" htmlFor={`rename-frame-${item.id}`}>
+                            Frame title
+                          </label>
+                          <input
+                            id={`rename-frame-${item.id}`}
+                            className="renameInput"
+                            type="text"
+                            value={renameDraft.label}
+                            onChange={(event) =>
+                              setRenameDraft((draft) =>
+                                draft && draft.id === item.id
+                                  ? { ...draft, label: event.target.value }
+                                  : draft,
+                              )
+                            }
+                          />
+                          <label className="srOnly" htmlFor={`rename-note-${item.id}`}>
+                            Frame subtitle
+                          </label>
+                          <textarea
+                            id={`rename-note-${item.id}`}
+                            className="renameNoteInput"
+                            rows={2}
+                            value={renameDraft.note}
+                            onChange={(event) =>
+                              setRenameDraft((draft) =>
+                                draft && draft.id === item.id
+                                  ? { ...draft, note: event.target.value }
+                                  : draft,
+                              )
+                            }
+                          />
+                          <span className="renameFormActions">
+                            <button className="renameSaveButton" type="button" onClick={applyRename}>
+                              SAVE
+                            </button>
+                            <button
+                              className="renameCancelButton"
+                              type="button"
+                              onClick={() => setRenameDraft(null)}
+                            >
+                              CANCEL
+                            </button>
+                          </span>
+                        </span>
+                      ) : (
+                        <>
+                          <span className="frameTitle">{item.label}</span>
+                          <span className="frameNote">{item.note}</span>
+                        </>
+                      )}
                     </span>
                     {canEdit ? (
                       <span className="canvasActions">
+                        {isActive && renameDraft?.id !== item.id ? (
+                          <button
+                            className="renameFrameButton"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setRenameDraft({ id: item.id, label: item.label, note: item.note });
+                            }}
+                          >
+                            RENAME
+                          </button>
+                        ) : null}
                         {selectedImage ? (
                           <button
                             className="deleteSelectedButton"
@@ -695,7 +967,7 @@ export default function Home() {
                             accept="image/*"
                             multiple
                             tabIndex={isActive ? 0 : -1}
-                            onChange={(event) => addImages(event, index)}
+                            onChange={(event) => addImages(event, item.id)}
                           />
                         </label>
                       </span>
