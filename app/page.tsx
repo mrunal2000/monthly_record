@@ -282,10 +282,6 @@ function getActiveFrameWidthToken(frameCount: number) {
   return getActiveFrameShareToken(frameCount, "--collapsed-width");
 }
 
-function getActiveFrameHeightToken(frameCount: number) {
-  return getActiveFrameShareToken(frameCount, "--accordion-mobile-collapsed-height");
-}
-
 type LiveClockProps = { theme: ThemeName };
 
 function LiveClock({ theme }: LiveClockProps) {
@@ -364,6 +360,7 @@ export default function Home() {
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
+  const frameArticleRefs = useRef<(HTMLElement | null)[]>([]);
   const dragRef = useRef<DragState | null>(null);
   const lastDragAppliedRef = useRef<{
     imageKey: string;
@@ -442,6 +439,16 @@ export default function Home() {
     setActiveIndex(index);
     setSelectedImageId(null);
   }
+
+  useEffect(() => {
+    if (wideLayout) return;
+    const el = frameArticleRefs.current[activeIndex];
+    if (!el) return;
+    const id = window.requestAnimationFrame(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [activeIndex, wideLayout, activeMonth.id]);
 
   useEffect(() => {
     imagesByBoardRef.current = imagesByBoard;
@@ -1497,7 +1504,6 @@ export default function Home() {
         style={
           {
             "--active-frame-width": getActiveFrameWidthToken(categories.length),
-            "--active-frame-height": getActiveFrameHeightToken(categories.length),
           } as CSSProperties
         }
       >
@@ -1510,6 +1516,9 @@ export default function Home() {
 
           return (
             <article
+              ref={(node) => {
+                frameArticleRefs.current[index] = node;
+              }}
               key={item.id}
               className="frame"
               data-active={isActive ? "true" : undefined}
