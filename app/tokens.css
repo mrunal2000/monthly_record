@@ -1,12 +1,15 @@
 /*
-  Three skins: shared geometry lives on :root; each theme swaps palette, typography, and motion feel.
+  Three skins: paper, brutalist, minimal — palette + typography + motion per html[data-theme].
   Theme is driven by html[data-theme] (set from the client).
  */
 
 :root {
+  /* Collapsed stripe height when the accordion stacks vertically (mobile) */
+  --accordion-mobile-collapsed-height: clamp(42px, 11vw, 54px);
+  --mobile-month-rail-band: 48px;
   --size-collapsed-frame: clamp(12px, 2vw, 16px);
   --space-accordion-gap: clamp(8px, 1.6vw, 10px);
-  --size-top-frame: clamp(22px, 3vw, 32px);
+  --size-top-frame: calc(6px + clamp(22px, 3vw, 32px));
   --size-month-rail: clamp(54px, 7vw, 76px);
   --border-frame: 1px;
   --motion-panel-duration: 520ms;
@@ -59,8 +62,8 @@ html[data-theme="paper"] {
     serif;
 }
 
-/* --- INK: white field + vivid proofs (mono, IBM Plex) ------------------- */
-html[data-theme="ink"] {
+/* --- BRUTALIST: white field + vivid proofs (mono, IBM Plex) ------------ */
+html[data-theme="brutalist"] {
   color-scheme: light;
 
   --font-body: "IBM Plex Mono", "Sometype Mono", ui-monospace, monospace;
@@ -91,28 +94,49 @@ html[data-theme="ink"] {
     sans-serif;
 }
 
-/* --- BNW: print proof / harsh contrast / halftone companion ------------ */
-html[data-theme="bnw"] {
+/* --- MINIMAL: SF Pro stack, monochrome UI, restrained motion ---------- */
+html[data-theme="minimal"] {
   color-scheme: light;
 
-  --font-body: "Sometype Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-chrome: "Sometype Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-sf:
+    -apple-system,
+    BlinkMacSystemFont,
+    "SF Pro Text",
+    "SF Pro Display",
+    ui-sans-serif,
+    system-ui,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Helvetica,
+    Arial,
+    sans-serif;
 
-  --color-bg: #f4f4f4;
-  --color-ink: #0a0a0a;
-  --color-muted: #5a5a5a;
+  --font-body: var(--font-sf);
+  --font-chrome: var(--font-sf);
+  --font-frame-display: var(--font-sf);
+
+  --color-bg: #fafafa;
+  --color-ink: #1d1d1f;
+  --color-muted: #86868b;
   --color-surface: #ffffff;
 
-  --category-media: #111111;
-  --category-books: #2c2c2c;
-  --category-misc: #474747;
-  --category-wishlist: #c8c8c8;
-  --category-food: #666666;
-  --category-on-dark: #fafafa;
-  --category-on-light: #060606;
+  --category-media: #0071e3;
+  --category-books: #424245;
+  --category-misc: #636366;
+  --category-wishlist: #d2d2d7;
+  --category-food: #515154;
+  --category-on-dark: #f5f5f7;
+  --category-on-light: #1d1d1f;
 
-  --motion-panel-duration: 480ms;
-  --motion-panel-ease: cubic-bezier(0.65, 0, 0.35, 1);
+  --space-accordion-gap: clamp(10px, 1.85vw, 14px);
 
-  --font-frame-display: "Sometype Mono", ui-monospace, SFMono-Regular, monospace;
+  --motion-panel-duration: 440ms;
+  --motion-panel-ease: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  /* Flat frames + unobtrusive rails */
+  --size-month-rail: clamp(112px, 18vw, 168px);
+  --minimal-frame-fill: #ffffff;
+  --minimal-frame-border: #e5e5ea;
+  --minimal-rail-divider: #e5e5ea;
 }

@@ -1,0 +1,19 @@
+{
+  "name": "Paper Rectangle Accordion",
+  "short_name": "Accordion",
+  "description": "A Paper-inspired interactive rectangle accordion — monthly favorites and images.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#ffffff",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

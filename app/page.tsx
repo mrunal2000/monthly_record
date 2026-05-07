@@ -1,6 +1,5 @@
 "use client";
 
-import { HalftoneCmyk } from "@paper-design/shaders-react";
 import type { CSSProperties, ChangeEvent, FormEvent, PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -86,13 +85,13 @@ type DragState = {
   offsetY: number;
 };
 
-type ThemeName = "paper" | "ink" | "bnw";
+type ThemeName = "paper" | "brutalist" | "minimal";
 type OpenDirection = "ltr" | "rtl";
 
 const themes: { id: ThemeName; label: string }[] = [
   { id: "paper", label: "PAPER" },
-  { id: "ink", label: "INK" },
-  { id: "bnw", label: "BNW" },
+  { id: "brutalist", label: "BRUTALIST" },
+  { id: "minimal", label: "MINIMAL" },
 ];
 
 const months = [
@@ -109,6 +108,40 @@ const months = [
   { id: "nov", label: "NOV" },
   { id: "dec", label: "DEC" },
 ];
+
+/** Title-case month id for MINIMAL rail (horizontal, non-all-caps). */
+function formatMonthNavLabel(monthId: string) {
+  if (!monthId) return "";
+  return monthId.charAt(0).toUpperCase() + monthId.slice(1).toLowerCase();
+}
+
+/** Sentence case for minimal theme frame titles (e.g. MEDIA → Media). */
+function formatMinimalSentenceCase(label: string) {
+  const t = label.trim();
+  if (!t) return t;
+  return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
+/** Timestamp for minimal: mixed case (not all-caps), lowercase am/pm. */
+function formatMinimalTimestamp(date: Date) {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  return dtf
+    .formatToParts(date)
+    .map(({ type, value }) => {
+      if (type === "dayPeriod") return value.toLowerCase();
+      if (type === "literal") return value;
+      return value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+    })
+    .join("");
+}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -142,18 +175,29 @@ function colorsForCategoryIndex(index: number) {
   return def ? { color: def.color, textColor: def.textColor } : { color: DEFAULT_CATEGORIES[0].color, textColor: DEFAULT_CATEGORIES[0].textColor };
 }
 
-function getActiveFrameWidthToken(frameCount: number) {
-  const collapsedFrames = frameCount - 1;
-  const collapsedWidth = Array.from(
-    { length: collapsedFrames },
-    () => "var(--collapsed-width)",
-  ).join(" - ");
-  const collapsedGaps = Array.from(
-    { length: collapsedFrames },
-    () => "var(--accordion-gap)",
-  ).join(" - ");
+function getActiveFrameShareToken(
+  frameCount: number,
+  collapsedToken: "--collapsed-width" | "--accordion-mobile-collapsed-height",
+) {
+  const collapsedPanels = Math.max(0, frameCount - 1);
+  if (collapsedPanels === 0) return "100%";
 
-  return `calc(100% - ${collapsedWidth} - ${collapsedGaps})`;
+  const sizeChunk = Array.from({ length: collapsedPanels }, () => `var(${collapsedToken})`).join(
+    " - ",
+  );
+  const gapChunk = Array.from({ length: collapsedPanels }, () => "var(--accordion-gap)").join(
+    " - ",
+  );
+
+  return `calc(100% - ${sizeChunk} - ${gapChunk})`;
+}
+
+function getActiveFrameWidthToken(frameCount: number) {
+  return getActiveFrameShareToken(frameCount, "--collapsed-width");
+}
+
+function getActiveFrameHeightToken(frameCount: number) {
+  return getActiveFrameShareToken(frameCount, "--accordion-mobile-collapsed-height");
 }
 
 export default function Home() {
@@ -169,7 +213,7 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [theme, setTheme] = useState<ThemeName>("paper");
+  const [theme, setTheme] = useState<ThemeName>("brutalist");
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
   const [newFrameName, setNewFrameName] = useState("");
@@ -187,6 +231,14 @@ export default function Home() {
     if (storedTheme === "gallery") {
       storedTheme = "paper";
       window.localStorage.setItem("monthly-record-theme", "paper");
+    }
+    if (storedTheme === "bnw") {
+      storedTheme = "minimal";
+      window.localStorage.setItem("monthly-record-theme", "minimal");
+    }
+    if (storedTheme === "ink") {
+      storedTheme = "brutalist";
+      window.localStorage.setItem("monthly-record-theme", "brutalist");
     }
     if (storedTheme && themes.some((themeOption) => themeOption.id === storedTheme)) {
       setTheme(storedTheme as ThemeName);
@@ -263,6 +315,19 @@ export default function Home() {
     }
     setCategoriesHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (theme !== "minimal" || !categoriesHydrated) return;
+    setCategories((prev) => {
+      let changed = false;
+      const next = prev.map((c) => {
+        const nl = formatMinimalSentenceCase(c.label);
+        if (nl !== c.label) changed = true;
+        return { ...c, label: nl };
+      });
+      return changed ? next : prev;
+    });
+  }, [theme, categoriesHydrated]);
 
   useEffect(() => {
     if (!categoriesHydrated) return;
@@ -381,7 +446,7 @@ export default function Home() {
         ...prev,
         {
           id,
-          label: name.toUpperCase(),
+          label: theme === "minimal" ? formatMinimalSentenceCase(name) : name.toUpperCase(),
           note: "",
           color,
           textColor,
@@ -705,22 +770,37 @@ export default function Home() {
     setSelectedImageId(null);
   }
 
+  function leaveEditFlow() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("edit");
+    const search = url.searchParams.toString();
+    window.history.replaceState({}, "", `${url.pathname}${search ? `?${search}` : ""}`);
+    setEditMode(false);
+  }
+
   return (
     <main className="page" onPointerDown={() => setSelectedImageId(null)}>
       <time className="topTimestamp" dateTime={now?.toISOString()}>
         {now
-          ? new Intl.DateTimeFormat("en", {
-              weekday: "short",
-              month: "short",
-              day: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-              second: "2-digit",
-            }).format(now)
+          ? theme === "minimal"
+            ? formatMinimalTimestamp(now)
+            : new Intl.DateTimeFormat("en", {
+                weekday: "short",
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                second: "2-digit",
+              }).format(now)
           : ""}
       </time>
       {editMode || user ? (
-        <form className="authBar" onSubmit={signIn}>
+        <form
+          className="authBar"
+          data-auth-state={user ? "signed-in" : "signed-out"}
+          onSubmit={signIn}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
           {user ? (
             <>
               <span className="authUser">{user.email}</span>
@@ -730,31 +810,47 @@ export default function Home() {
             </>
           ) : (
             <>
+              <h2
+                className={`authScreenHeadline${theme === "minimal" ? " authScreenHeadline--minimal" : ""}`}
+                id="auth-screen-title"
+              >
+                {theme === "minimal" ? "Sign in to edit" : "SIGN IN TO EDIT"}
+              </h2>
               <input
                 className="authInput"
                 type="email"
                 placeholder="email to edit"
                 value={authEmail}
                 onChange={(event) => setAuthEmail(event.target.value)}
+                autoComplete="email"
+                inputMode="email"
               />
               <button className="authButton" type="submit">
                 SIGN IN
               </button>
               {authMessage ? <span className="authMessage">{authMessage}</span> : null}
+              {editMode ? (
+                <button className="authScreenDismiss" type="button" onClick={leaveEditFlow}>
+                  {theme === "minimal" ? "View without signing in" : "VIEW WITHOUT SIGNING IN"}
+                </button>
+              ) : null}
             </>
           )}
         </form>
       ) : null}
       <label className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
-        <span className="srOnly">Theme</span>
+        <span className="themePickerPrefix">Theme:</span>
         <select
           className="themeSelect"
+          aria-label="Visual theme"
           value={theme}
           onChange={(event) => updateTheme(event.target.value as ThemeName)}
         >
           {themes.map((themeOption) => (
             <option key={themeOption.id} value={themeOption.id}>
-              {themeOption.label}
+              {theme === "minimal"
+                ? formatMinimalSentenceCase(themeOption.label)
+                : themeOption.label}
             </option>
           ))}
         </select>
@@ -765,25 +861,26 @@ export default function Home() {
           const isPastMonth = index < currentMonthIndex;
           const pastCount = isPastMonth ? countImagesForMonth(index) : null;
           const showEmptyPastBadge = pastCount !== null && pastCount === 0;
+          const navLabel = theme === "minimal" ? formatMonthNavLabel(month.id) : month.label;
           return (
             <button
               key={month.id}
               className="monthButton"
               data-active={index === activeMonthIndex ? "true" : undefined}
-              data-current={index === currentMonthIndex}
+              data-current={index === currentMonthIndex ? "true" : undefined}
               type="button"
               aria-label={
-                showEmptyPastBadge ? `${month.label}, empty` : month.label
+                showEmptyPastBadge ? `${navLabel}, empty` : navLabel
               }
               onClick={() => {
                 setActiveMonthIndex(index);
                 setSelectedImageId(null);
               }}
             >
-              <span aria-hidden="true">{month.label}</span>
+              <span aria-hidden="true">{navLabel}</span>
               {showEmptyPastBadge ? (
                 <span className="monthCountBadge" aria-hidden="true">
-                  [0]
+                  {theme === "minimal" ? "0" : "[0]"}
                 </span>
               ) : null}
             </button>
@@ -819,8 +916,15 @@ export default function Home() {
       <section
         key={activeMonth.id}
         className="accordion"
-        aria-label={`${activeMonth.label} favorite category cards`}
-        style={{ "--active-frame-width": getActiveFrameWidthToken(categories.length) } as CSSProperties}
+        aria-label={`${
+          theme === "minimal" ? formatMonthNavLabel(activeMonth.id) : activeMonth.label
+        } favorite category cards`}
+        style={
+          {
+            "--active-frame-width": getActiveFrameWidthToken(categories.length),
+            "--active-frame-height": getActiveFrameHeightToken(categories.length),
+          } as CSSProperties
+        }
       >
         {categories.map((item, index) => {
           const isActive = index === activeIndex;
@@ -852,7 +956,11 @@ export default function Home() {
                 }
               }}
             >
-              <span className="frameLabel">{`${item.label}[${imageCount}]`}</span>
+              <span className="frameLabel">
+                {`${
+                  theme === "minimal" ? formatMinimalSentenceCase(item.label) : item.label
+                }[${imageCount}]`}
+              </span>
               <span className="frameRect">
                 <span className="frameContent" aria-hidden={!isActive}>
                   <span className="canvasHeader">
@@ -890,11 +998,18 @@ export default function Home() {
                                 );
                                 return;
                               }
-                              const nextLabel = trimmed.toUpperCase();
-                              const prevLabel = (
+                              const nextLabel =
+                                theme === "minimal"
+                                  ? formatMinimalSentenceCase(trimmed)
+                                  : trimmed.toUpperCase();
+                              const prevRaw = (
                                 titleStableRef.current[item.id] ?? ""
-                              ).trim().toUpperCase();
-                              if (prevLabel !== nextLabel) {
+                              ).trim();
+                              const prevCompared =
+                                theme === "minimal"
+                                  ? formatMinimalSentenceCase(prevRaw)
+                                  : prevRaw.toUpperCase();
+                              if (prevCompared !== nextLabel) {
                                 void patchSupabaseCategoryLabels(item.id, nextLabel);
                               }
                               setCategories((prev) =>
@@ -930,7 +1045,11 @@ export default function Home() {
                         </>
                       ) : (
                         <>
-                          <span className="frameTitle">{item.label}</span>
+                          <span className="frameTitle">
+                            {theme === "minimal"
+                              ? formatMinimalSentenceCase(item.label)
+                              : item.label}
+                          </span>
                           <span className="frameNote">{item.note}</span>
                         </>
                       )}
@@ -951,7 +1070,12 @@ export default function Home() {
                         ) : null}
                         <label className="addButton" onClick={(event) => event.stopPropagation()}>
                           <span aria-hidden="true">+</span>
-                          <span className="srOnly">Add images to {item.label}</span>
+                          <span className="srOnly">
+                            Add images to{" "}
+                            {theme === "minimal"
+                              ? formatMinimalSentenceCase(item.label)
+                              : item.label}
+                          </span>
                           <input
                             className="fileInput"
                             type="file"
@@ -984,34 +1108,6 @@ export default function Home() {
                         onPointerCancel={stopDrag}
                       >
                         <img className="canvasImage" src={image.src} alt="" draggable={false} />
-                        {theme === "bnw" ? (
-                          <HalftoneCmyk
-                            size={0.08}
-                            gridNoise={0.01}
-                            type="ink"
-                            softness={1}
-                            contrast={1}
-                            gainC={0.3}
-                            gainM={0}
-                            gainY={0.2}
-                            gainK={0}
-                            floodC={0.15}
-                            floodM={0}
-                            floodY={0}
-                            floodK={0}
-                            scale={1}
-                            image={image.src}
-                            grainSize={0.5}
-                            fit="cover"
-                            colorBack="#00000000"
-                            colorC="#00B4FF"
-                            colorM="#FC519F"
-                            colorY="#FFD800"
-                            colorK="#231F20"
-                            className="imageShader"
-                            style={{ backgroundColor: "#FBFAF5", height: "100%", width: "100%" }}
-                          />
-                        ) : null}
                         {canEdit ? (
                           <>
                             <span

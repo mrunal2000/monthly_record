@@ -43,6 +43,7 @@ body {
 
 /* Condensed/stack UI face (Oswald on PAPER, mono on others) — body stays editorial or mono via --font-body */
 .topTimestamp,
+.themePickerPrefix,
 .authInput,
 .authButton,
 .authUser,
@@ -159,6 +160,26 @@ body {
   white-space: nowrap;
 }
 
+.authScreenHeadline,
+.authScreenDismiss {
+  display: none;
+}
+
+.authScreenHeadline {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: inherit;
+  font-family: inherit;
+  font-weight: inherit;
+}
+
+.authScreenDismiss {
+  font: inherit;
+  cursor: pointer;
+}
+
 .themePicker {
   position: absolute;
   top: 0;
@@ -167,6 +188,17 @@ body {
   height: var(--top-frame-height);
   display: flex;
   align-items: center;
+  gap: 6px;
+}
+
+.themePickerPrefix {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .themeSelect {
@@ -706,16 +738,228 @@ html[data-theme="paper"] .frameTitle.frameTitleEditable {
   font-variant-numeric: oldstyle-nums;
 }
 
-html[data-theme="ink"] .frameTitle,
-html[data-theme="ink"] .frameTitle.frameTitleEditable {
+html[data-theme="brutalist"] .frameTitle,
+html[data-theme="brutalist"] .frameTitle.frameTitleEditable {
   font-weight: 700;
   letter-spacing: -0.045em;
 }
 
-html[data-theme="bnw"] .frameTitle,
-html[data-theme="bnw"] .frameTitle.frameTitleEditable {
-  font-weight: 700;
-  letter-spacing: -0.06em;
+html[data-theme="minimal"] .frameTitle,
+html[data-theme="minimal"] .frameTitle.frameTitleEditable {
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .page {
+  background: var(--color-bg);
+  border: 1px solid var(--minimal-frame-border);
+}
+
+html[data-theme="minimal"] .page::before {
+  border-bottom: 1px solid var(--minimal-frame-border);
+}
+
+html[data-theme="minimal"] .topTimestamp {
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+html[data-theme="minimal"] .themePickerPrefix {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 450;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-muted);
+}
+
+/* Shadcn-style outline trigger — compact scale for minimal top bar */
+html[data-theme="minimal"] .themeSelect {
+  appearance: none;
+  -webkit-appearance: none;
+  min-height: 0;
+  height: 22px;
+  padding: 0 20px 0 8px;
+  border-radius: 4px;
+  border: 1px solid var(--minimal-frame-border);
+  background-color: var(--minimal-frame-fill);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 20px;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+  box-shadow: 0 1px 1px rgb(15 23 42 / 0.04);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='none' stroke='%2386868b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 6px center;
+  background-size: 12px 12px;
+}
+
+html[data-theme="minimal"] .themeSelect:hover {
+  background-color: #fafafa;
+}
+
+html[data-theme="minimal"] .themeSelect:focus-visible {
+  outline: 2px solid rgb(0 113 227 / 0.4);
+  outline-offset: 2px;
+}
+
+html[data-theme="minimal"] .authInput,
+html[data-theme="minimal"] .authButton {
+  border-radius: 6px;
+  border-color: var(--minimal-frame-border);
+}
+
+html[data-theme="minimal"] .authUser,
+html[data-theme="minimal"] .authMessage {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
+/* Minimal: upright month list (horizontal labels, stacked) */
+html[data-theme="minimal"] .monthRail {
+  align-items: stretch;
+  padding: 10px 0;
+  border-right: 1px solid var(--minimal-rail-divider);
+  gap: 2px;
+}
+
+html[data-theme="minimal"] .monthButton {
+  min-height: 0;
+  flex: 0 0 auto;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 6px;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 400;
+  justify-content: flex-start;
+  align-items: center;
+  flex-direction: row;
+  gap: 6px;
+}
+
+html[data-theme="minimal"] .monthButton:first-child {
+  border-top: 0;
+}
+
+html[data-theme="minimal"] .monthCountBadge {
+  font-size: 12px;
+  letter-spacing: 0;
+  opacity: 0.45;
+}
+
+html[data-theme="minimal"] .monthButton:hover {
+  background: rgb(0 0 0 / 0.04);
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .monthButton[data-active="true"] {
+  background: rgb(0 0 0 / 0.06);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme="minimal"] .monthButton[data-current="true"]::after {
+  left: 4px;
+  right: auto;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+html[data-theme="minimal"] .monthButton[data-current="true"] {
+  padding-left: 14px;
+}
+
+html[data-theme="minimal"] .monthButton:focus-visible {
+  outline: 2px solid rgb(0 113 227 / 0.45);
+  outline-offset: 2px;
+}
+
+/* Minimal frames: white fills + light gray rules */
+html[data-theme="minimal"] .frameRect {
+  border: 1px solid var(--minimal-frame-border);
+  background-color: var(--minimal-frame-fill);
+  border-radius: 4px;
+}
+
+html[data-theme="minimal"] .frame[data-active="true"] .frameContent {
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .frame .frameNote,
+html[data-theme="minimal"] .frame .frameNoteEditable {
+  color: var(--color-muted);
+  opacity: 1;
+}
+
+html[data-theme="minimal"] .frame .addButton {
+  border-color: var(--minimal-frame-border);
+  color: var(--ink);
+  border-radius: 8px;
+}
+
+html[data-theme="minimal"] .frame .addButton:hover {
+  background: rgb(0 0 0 / 0.05);
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .frame .deleteSelectedButton {
+  border-color: var(--minimal-frame-border);
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .frame .deleteSelectedButton:hover {
+  background: rgb(0 0 0 / 0.05);
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .frame .imageCanvas {
+  border: 1px dashed var(--minimal-frame-border);
+  background-color: #fafafa;
+  background-image: radial-gradient(
+    circle at center,
+    rgb(142 142 147 / 0.42) 0.65px,
+    transparent 1.2px
+  );
+  background-size: 22px 22px;
+}
+
+html[data-theme="minimal"] .frame .imageControl {
+  border-color: var(--minimal-frame-border);
+  background: var(--minimal-frame-fill);
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .frame .imageControl:hover {
+  background: rgb(0 0 0 / 0.05);
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .frame .canvasImage {
+  border-color: var(--minimal-frame-border);
+}
+
+html[data-theme="minimal"] .frame .resizeHandle {
+  border-color: var(--minimal-frame-border);
+  background: var(--minimal-frame-fill);
+}
+
+html[data-theme="minimal"] .frameLabel {
+  color: var(--ink);
 }
 
 html[data-theme="paper"] .topTimestamp,
@@ -852,10 +1096,408 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   border-color: rgb(15 15 15 / 0.35);
 }
 
-html[data-theme="bnw"] .page {
-  background-color: var(--color-bg);
-  background-image: radial-gradient(rgb(10 10 10 / 0.055) 1px, transparent 1px);
-  background-size: 6px 6px;
+/* ----- Mobile portrait: vertical accordion + horizontal month rail --------- */
+
+@media (max-width: 767px) {
+  .page {
+    --mobile-frame-extra: 0px;
+    display: grid;
+    place-items: start center;
+    align-content: start;
+    min-height: 100dvh;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-top: calc(
+      env(safe-area-inset-top, 0px) + var(--top-frame-height) + var(--mobile-month-rail-band) +
+        14px
+    );
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .page:has(.frameManagerBar) {
+    --mobile-frame-extra: 52px;
+  }
+
+  html[data-theme="minimal"] .page {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
+  .page::before {
+    top: env(safe-area-inset-top, 0px);
+  }
+
+  .themePicker {
+    top: env(safe-area-inset-top, 0px);
+    left: max(10px, env(safe-area-inset-left));
+    gap: 4px;
+  }
+
+  .themePickerPrefix {
+    display: none;
+  }
+
+  .themeSelect {
+    max-width: min(140px, 40vw);
+  }
+
+  .topTimestamp {
+    top: env(safe-area-inset-top, 0px);
+    right: max(10px, env(safe-area-inset-right));
+    font-size: 10px;
+    max-width: 46vw;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .authBar {
+    top: env(safe-area-inset-top, 0px);
+    left: max(88px, env(safe-area-inset-left));
+    right: max(88px, env(safe-area-inset-right));
+    width: auto;
+    transform: none;
+    flex-wrap: wrap;
+    justify-content: center;
+    row-gap: 4px;
+  }
+
+  .authBar[data-auth-state="signed-in"] {
+    height: var(--top-frame-height);
+    flex-wrap: wrap;
+  }
+
+  .authBar[data-auth-state="signed-out"] {
+    position: fixed;
+    inset: 0;
+    top: 0;
+    left: 0 !important;
+    right: 0 !important;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+    min-height: 100dvh;
+    box-sizing: border-box;
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(14px, 4vw, 22px);
+    padding: calc(env(safe-area-inset-top, 0px) + 28px) max(20px, env(safe-area-inset-right))
+      calc(env(safe-area-inset-bottom, 0px) + 28px) max(20px, env(safe-area-inset-left));
+    z-index: 200;
+    background: var(--bg);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    transform: none;
+  }
+
+  .authBar[data-auth-state="signed-out"] .authScreenHeadline {
+    display: block;
+    width: min(360px, 100%);
+    text-align: center;
+    font-family: var(--font-chrome, var(--font-body));
+    font-size: clamp(12px, 3.8vw, 14px);
+    font-weight: 600;
+    line-height: 1.35;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink);
+  }
+
+  .authBar[data-auth-state="signed-out"] .authScreenHeadline--minimal {
+    font-family: var(--font-body);
+    font-size: clamp(18px, 5vw, 22px);
+    font-weight: 600;
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .authBar[data-auth-state="signed-out"] .authInput {
+    width: min(360px, 100%);
+    max-width: 400px;
+    height: 48px;
+    margin-inline: auto;
+    font-size: 16px;
+    line-height: 1.2;
+  }
+
+  .authBar[data-auth-state="signed-out"] .authButton {
+    width: min(360px, 100%);
+    max-width: 400px;
+    min-height: 48px;
+    height: auto;
+    margin-inline: auto;
+    padding: 12px 16px;
+    font-size: 11px;
+    line-height: 1.2;
+  }
+
+  .authBar[data-auth-state="signed-out"] .authMessage {
+    max-width: min(360px, 100%);
+    white-space: normal;
+    text-align: center;
+    text-overflow: unset;
+    overflow: visible;
+    margin-inline: auto;
+  }
+
+  .authBar[data-auth-state="signed-out"] .authScreenDismiss {
+    display: block;
+    width: min(360px, 100%);
+    max-width: 400px;
+    margin-inline: auto;
+    margin-top: 4px;
+    padding: 14px 12px;
+    border: none;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--font-chrome, var(--font-body));
+    font-size: 11px;
+    line-height: 1.2;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  .authBar[data-auth-state="signed-out"] .authScreenDismiss:hover {
+    color: var(--ink);
+  }
+
+  html[data-theme="minimal"] .authBar[data-auth-state="signed-out"] .authScreenDismiss {
+    font-family: var(--font-body);
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 13px;
+  }
+
+  html[data-theme="minimal"] .authBar[data-auth-state="signed-out"] .authButton,
+  html[data-theme="minimal"] .authBar[data-auth-state="signed-out"] .authInput {
+    border-radius: 8px;
+  }
+
+  .authBar[data-auth-state="signed-in"] .authInput {
+    width: min(44vw, 150px);
+  }
+
+  .monthRail {
+    top: calc(env(safe-area-inset-top, 0px) + var(--top-frame-height));
+    left: 0;
+    right: auto;
+    width: 100%;
+    height: auto;
+    min-height: var(--mobile-month-rail-band);
+    flex-direction: row;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    border-right: none;
+    border-bottom: var(--frame-border-width) solid var(--ink);
+    -webkit-overflow-scrolling: touch;
+    padding-inline: max(0px, env(safe-area-inset-left)) max(0px, env(safe-area-inset-right));
+    padding-block: 0;
+  }
+
+  .monthRail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .monthButton[data-current="true"]::after {
+    right: 10px;
+    left: auto;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .monthButton {
+    min-height: 44px;
+    min-width: 44px;
+    flex: 0 0 auto;
+    padding-inline: 12px;
+    writing-mode: horizontal-tb;
+    text-orientation: mixed;
+    border-bottom: 0;
+    border-right: var(--frame-border-width) solid var(--ink);
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    touch-action: manipulation;
+  }
+
+  .monthButton[data-current="true"] {
+    min-width: 58px;
+    padding-left: 12px;
+    padding-right: 22px;
+  }
+
+  .monthButton:first-child {
+    border-top: 0;
+  }
+
+  .monthButton:last-child {
+    border-right: 0;
+  }
+
+  html[data-theme="minimal"] .monthRail {
+    align-items: stretch;
+    padding: 6px max(10px, env(safe-area-inset-left)) 8px max(10px, env(safe-area-inset-right));
+    gap: 4px;
+    border-right: none;
+    border-bottom: 1px solid var(--minimal-rail-divider);
+    overflow-x: auto;
+  }
+
+  html[data-theme="minimal"] .monthButton {
+    flex: 0 0 auto;
+    min-height: 40px;
+    border: 0;
+    border-radius: 6px;
+    border-right: 0;
+    padding-inline: 10px;
+    writing-mode: horizontal-tb;
+  }
+
+  html[data-theme="minimal"] .monthButton[data-current="true"]::after {
+    left: 6px;
+    right: auto;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  html[data-theme="minimal"] .monthButton[data-current="true"] {
+    padding-left: 22px;
+    padding-right: 14px;
+    min-width: 58px;
+  }
+
+  html[data-theme="minimal"] .monthButton:first-child {
+    border-top: 0;
+  }
+
+  html[data-theme="minimal"] .monthButton:last-child {
+    border-right: 0;
+  }
+
+  .frameManagerBar {
+    left: max(10px, env(safe-area-inset-left));
+    right: max(10px, env(safe-area-inset-right));
+    bottom: max(12px, env(safe-area-inset-bottom));
+  }
+
+  .accordion {
+    width: min(100%, 100vw - 24px);
+    max-width: 720px;
+    height: calc(
+      100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) -
+        var(--top-frame-height) - var(--mobile-month-rail-band) - 52px -
+        var(--mobile-frame-extra)
+    );
+    max-height: min(920px, 100dvh);
+    min-height: min(360px, 80dvh);
+    flex-direction: column;
+    align-items: stretch;
+    align-content: stretch;
+  }
+
+  .frame {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    flex: 0 0 var(--accordion-mobile-collapsed-height);
+    transition:
+      flex-basis var(--motion-panel-duration) var(--motion-panel-ease),
+      height 240ms ease;
+    touch-action: manipulation;
+  }
+
+  .frame[data-active="true"] {
+    flex: 0 0 var(--active-frame-height);
+    min-height: 200px;
+  }
+
+  /*
+   Collapsed rows are only ~--accordion-mobile-collapsed-height tall; a %-height reserve modeled on the
+   open panel left almost no colored rect (e.g. 4px). Pin the strip with top +
+   fixed label band instead.
+   */
+  .frame:not([data-active="true"]) .frameRect {
+    top: calc(8px + clamp(18px, 5vw, 24px));
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: auto;
+    min-height: 12px;
+  }
+
+  .frame[data-active="true"] .frameRect {
+    top: calc(8px + clamp(20px, 5.5vw, 28px));
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: auto;
+    min-height: 0;
+  }
+
+  .frameLabel {
+    left: 10px;
+    top: 6px;
+    bottom: auto;
+    transform: none;
+    transform-origin: unset;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: calc(100% - 16px);
+    pointer-events: none;
+  }
+
+  .frame[data-active="true"][data-direction="ltr"] .frameRect {
+    animation-name: revealFrameMobileFromBottom;
+  }
+
+  .frame[data-active="true"][data-direction="rtl"] .frameRect {
+    animation-name: revealFrameMobileFromTop;
+  }
+
+  @keyframes revealFrameMobileFromBottom {
+    from {
+      clip-path: inset(calc(100% - var(--accordion-mobile-collapsed-height)) 0 0 0);
+    }
+
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+
+  @keyframes revealFrameMobileFromTop {
+    from {
+      clip-path: inset(0 0 calc(100% - var(--accordion-mobile-collapsed-height)) 0);
+    }
+
+    to {
+      clip-path: inset(0 0 0 0);
+    }
+  }
+
+  .frameTitle {
+    font-size: clamp(22px, 6.5vw, 40px);
+  }
+
+  .frameNote,
+  .frame .frameNoteEditable {
+    max-width: 100%;
+  }
+
+  .canvasHeader {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
