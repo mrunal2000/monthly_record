@@ -626,9 +626,7 @@ export default function Home() {
                           onChange={(event) => addImages(event, index)}
                         />
                       </label>
-                    ) : (
-                      <span className="viewerBadge">VIEW ONLY</span>
-                    )}
+                    ) : null}
                   </span>
                   <span className="imageCanvas">
                     {boardImages.map((image) => (

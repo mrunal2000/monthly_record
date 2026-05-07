@@ -321,19 +321,6 @@ body {
   color: var(--frame-color);
 }
 
-.viewerBadge {
-  display: grid;
-  min-width: clamp(62px, 10vw, 88px);
-  height: clamp(30px, 5vw, 38px);
-  flex: 0 0 auto;
-  place-items: center;
-  border: 1px solid currentColor;
-  color: var(--frame-text-color);
-  font-size: 10px;
-  line-height: 12px;
-  letter-spacing: 0.04em;
-}
-
 .fileInput {
   position: absolute;
   width: 1px;
