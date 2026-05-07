@@ -89,12 +89,7 @@ type DragState = {
   imageId: string;
   offsetX: number;
   offsetY: number;
-};
-
-type PendingDragSample = {
-  target: HTMLElement;
-  clientX: number;
-  clientY: number;
+  element: HTMLElement;
 };
 
 type ThemeName = "paper" | "brutalist" | "minimal";
@@ -287,8 +282,13 @@ export default function Home() {
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
   const dragRef = useRef<DragState | null>(null);
-  const dragPaintRafRef = useRef<number | null>(null);
-  const pendingDragSampleRef = useRef<PendingDragSample | null>(null);
+  const lastDragAppliedRef = useRef<{
+    imageKey: string;
+    imageId: string;
+    x: number;
+    y: number;
+    width: number;
+  } | null>(null);
   const activeMonth = months[activeMonthIndex];
   const canEdit = Boolean(user);
   const wideLayout = useWideLayout(768);
@@ -677,6 +677,9 @@ export default function Home() {
     event.stopPropagation();
     if (!canEdit) return;
 
+    const image = imagesByBoardRef.current[imageKey]?.find((entry) => entry.id === imageId);
+    if (!image) return;
+
     const imageRect = event.currentTarget.getBoundingClientRect();
     setSelectedImageId(imageId);
     dragRef.current = {
@@ -685,13 +688,18 @@ export default function Home() {
       imageId,
       offsetX: event.clientX - imageRect.left,
       offsetY: event.clientY - imageRect.top,
+      element: event.currentTarget,
     };
+    lastDragAppliedRef.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function startResize(event: PointerEvent<HTMLSpanElement>, imageKey: string, imageId: string) {
     event.stopPropagation();
     if (!canEdit) return;
+
+    const imageItem = event.currentTarget.closest(".imageItem");
+    if (!(imageItem instanceof HTMLElement)) return;
 
     setSelectedImageId(imageId);
     dragRef.current = {
@@ -700,61 +708,43 @@ export default function Home() {
       imageId,
       offsetX: 0,
       offsetY: 0,
+      element: imageItem,
     };
+    lastDragAppliedRef.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);
-  }
-
-  function flushPendingDragPaint() {
-    const sample = pendingDragSampleRef.current;
-    pendingDragSampleRef.current = null;
-    const drag = dragRef.current;
-    if (!sample || !drag) return;
-
-    const canvasEl = sample.target.closest(".imageCanvas");
-    if (!canvasEl) return;
-
-    const canvasRect = canvasEl.getBoundingClientRect();
-    const itemRect = drag.mode === "move" ? sample.target.getBoundingClientRect() : null;
-
-    setImagesByBoard((current) => {
-      const d = dragRef.current;
-      if (!d) return current;
-
-      const next = {
-        ...current,
-        [d.imageKey]: (current[d.imageKey] ?? []).map((image) =>
-          image.id === d.imageId
-            ? getUpdatedImage(image, sample.clientX, sample.clientY, canvasRect, d, itemRect)
-            : image,
-        ),
-      };
-      imagesByBoardRef.current = next;
-
-      return next;
-    });
   }
 
   function updateImageFromPointer(event: PointerEvent<HTMLElement>) {
     if (!canEdit) return;
 
     const drag = dragRef.current;
-    const canvas = event.currentTarget.closest(".imageCanvas");
-    if (!drag || !canvas) return;
+    const canvasEl = event.currentTarget.closest(".imageCanvas");
+    if (!drag || !canvasEl || !drag.element) return;
 
     event.stopPropagation();
 
-    pendingDragSampleRef.current = {
-      target: event.currentTarget,
-      clientX: event.clientX,
-      clientY: event.clientY,
+    const image = imagesByBoardRef.current[drag.imageKey]?.find((entry) => entry.id === drag.imageId);
+    if (!image) return;
+
+    const canvasRect = canvasEl.getBoundingClientRect();
+    const itemRect = drag.mode === "move" ? drag.element.getBoundingClientRect() : null;
+
+    const next = getUpdatedImage(image, event.clientX, event.clientY, canvasRect, drag, itemRect);
+
+    lastDragAppliedRef.current = {
+      imageKey: drag.imageKey,
+      imageId: drag.imageId,
+      x: next.x,
+      y: next.y,
+      width: next.width,
     };
 
-    if (dragPaintRafRef.current !== null) return;
-
-    dragPaintRafRef.current = window.requestAnimationFrame(() => {
-      dragPaintRafRef.current = null;
-      flushPendingDragPaint();
-    });
+    if (drag.mode === "move") {
+      drag.element.style.left = `${next.x}%`;
+      drag.element.style.top = `${next.y}%`;
+    } else {
+      drag.element.style.width = `${next.width}%`;
+    }
   }
 
   function getUpdatedImage(
@@ -784,39 +774,83 @@ export default function Home() {
   function stopDrag(event: PointerEvent<HTMLElement>) {
     event.stopPropagation();
 
-    if (dragPaintRafRef.current !== null) {
-      window.cancelAnimationFrame(dragPaintRafRef.current);
-      dragPaintRafRef.current = null;
+    const dragSnap = dragRef.current;
+
+    if (!dragSnap?.element) {
+      dragRef.current = null;
+      lastDragAppliedRef.current = null;
+      return;
     }
 
     if (!canEdit) {
-      pendingDragSampleRef.current = null;
+      dragSnap.element.style.removeProperty("left");
+      dragSnap.element.style.removeProperty("top");
+      dragSnap.element.style.removeProperty("width");
+      dragRef.current = null;
+      lastDragAppliedRef.current = null;
       return;
     }
 
-    const dragState = dragRef.current;
-    if (!dragState) {
-      pendingDragSampleRef.current = null;
-      return;
-    }
+    updateImageFromPointer(event);
 
-    pendingDragSampleRef.current = {
-      target: event.currentTarget,
-      clientX: event.clientX,
-      clientY: event.clientY,
-    };
-    flushPendingDragPaint();
-
-    const image = imagesByBoardRef.current[dragState.imageKey]?.find(
-      (currentImage) => currentImage.id === dragState.imageId,
+    const priorImage = imagesByBoardRef.current[dragSnap.imageKey]?.find(
+      (entry) => entry.id === dragSnap.imageId,
     );
-    const categoryId = categoryIdFromBoardKey(dragState.imageKey);
 
-    if (image && categoryId) {
-      void saveImageRecord(dragState.imageKey, categoryId, image);
+    dragSnap.element.style.removeProperty("left");
+    dragSnap.element.style.removeProperty("top");
+    dragSnap.element.style.removeProperty("width");
+
+    const last = lastDragAppliedRef.current;
+    lastDragAppliedRef.current = null;
+    dragRef.current = null;
+
+    if (
+      !last ||
+      last.imageId !== dragSnap.imageId ||
+      last.imageKey !== dragSnap.imageKey ||
+      !priorImage
+    ) {
+      return;
     }
 
-    dragRef.current = null;
+    const categoryId = categoryIdFromBoardKey(dragSnap.imageKey);
+    const patchedImage: CanvasImage = {
+      ...priorImage,
+      x: last.x,
+      y: last.y,
+      width: last.width,
+    };
+
+    setImagesByBoard((current) => {
+      const list = current[last.imageKey] ?? [];
+      const nextList = list.map((img) =>
+        img.id === last.imageId ? patchedImage : img,
+      );
+
+      const same =
+        nextList.length === list.length &&
+        nextList.every(
+          (row, idx) =>
+            row.x === list[idx]?.x &&
+            row.y === list[idx]?.y &&
+            row.width === list[idx]?.width,
+        );
+
+      if (same) return current;
+
+      const next = {
+        ...current,
+        [last.imageKey]: nextList,
+      };
+      imagesByBoardRef.current = next;
+
+      return next;
+    });
+
+    if (categoryId) {
+      void saveImageRecord(dragSnap.imageKey, categoryId, patchedImage);
+    }
   }
 
   function rotateImage(imageKey: string, imageId: string, amount: number) {
