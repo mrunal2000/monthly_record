@@ -73,19 +73,58 @@ body {
   text-transform: uppercase;
 }
 
-.saveStatus {
+.authBar {
   position: absolute;
   top: 0;
-  left: calc(var(--month-rail-width) + clamp(12px, 2vw, 24px));
-  z-index: 2;
+  left: 50%;
+  z-index: 3;
   height: var(--top-frame-height);
   display: flex;
   align-items: center;
+  gap: 8px;
+  transform: translateX(-50%);
+}
+
+.authInput,
+.authButton {
+  height: 20px;
+  border: 1px solid var(--ink);
+  background: var(--bg);
   color: var(--ink);
-  font-size: 11px;
-  line-height: 14px;
-  letter-spacing: 0.05em;
+  font: inherit;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+.authInput {
+  width: min(34vw, 180px);
+  padding: 0 7px;
+  text-transform: none;
+}
+
+.authButton {
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.authButton:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.authUser,
+.authMessage {
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.04em;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 
 .monthRail {
@@ -282,6 +321,19 @@ body {
   color: var(--frame-color);
 }
 
+.viewerBadge {
+  display: grid;
+  min-width: clamp(62px, 10vw, 88px);
+  height: clamp(30px, 5vw, 38px);
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid currentColor;
+  color: var(--frame-text-color);
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.04em;
+}
+
 .fileInput {
   position: absolute;
   width: 1px;
@@ -411,7 +463,8 @@ body {
   .frameRect,
   .frameContent,
   .addButton,
-  .monthButton {
+  .monthButton,
+  .authButton {
     animation: none;
     transition: none;
   }

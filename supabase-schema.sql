@@ -1,5 +1,5 @@
 -- Run this in the Supabase SQL editor.
--- This prototype uses public read/write policies. Add auth-specific policies before sharing widely.
+-- Viewers can read everything. Only signed-in Supabase Auth users can add/edit/delete.
 
 create extension if not exists "pgcrypto";
 
@@ -30,20 +30,23 @@ create policy "public can read favorite items"
   using (true);
 
 drop policy if exists "public can insert favorite items" on public.favorite_items;
-create policy "public can insert favorite items"
+drop policy if exists "authenticated users can insert favorite items" on public.favorite_items;
+create policy "authenticated users can insert favorite items"
   on public.favorite_items for insert
-  with check (true);
+  with check (auth.role() = 'authenticated');
 
 drop policy if exists "public can update favorite items" on public.favorite_items;
-create policy "public can update favorite items"
+drop policy if exists "authenticated users can update favorite items" on public.favorite_items;
+create policy "authenticated users can update favorite items"
   on public.favorite_items for update
-  using (true)
-  with check (true);
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
 
 drop policy if exists "public can delete favorite items" on public.favorite_items;
-create policy "public can delete favorite items"
+drop policy if exists "authenticated users can delete favorite items" on public.favorite_items;
+create policy "authenticated users can delete favorite items"
   on public.favorite_items for delete
-  using (true);
+  using (auth.role() = 'authenticated');
 
 insert into storage.buckets (id, name, public)
 values ('monthly-favorites', 'monthly-favorites', true)
@@ -55,11 +58,19 @@ create policy "public can read favorite images"
   using (bucket_id = 'monthly-favorites');
 
 drop policy if exists "public can upload favorite images" on storage.objects;
-create policy "public can upload favorite images"
+drop policy if exists "authenticated users can upload favorite images" on storage.objects;
+create policy "authenticated users can upload favorite images"
   on storage.objects for insert
-  with check (bucket_id = 'monthly-favorites');
+  with check (
+    bucket_id = 'monthly-favorites'
+    and auth.role() = 'authenticated'
+  );
 
 drop policy if exists "public can delete favorite images" on storage.objects;
-create policy "public can delete favorite images"
+drop policy if exists "authenticated users can delete favorite images" on storage.objects;
+create policy "authenticated users can delete favorite images"
   on storage.objects for delete
-  using (bucket_id = 'monthly-favorites');
+  using (
+    bucket_id = 'monthly-favorites'
+    and auth.role() = 'authenticated'
+  );

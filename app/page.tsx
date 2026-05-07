@@ -1,7 +1,8 @@
 "use client";
 
-import type { CSSProperties, ChangeEvent, PointerEvent } from "react";
+import type { CSSProperties, ChangeEvent, FormEvent, PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
 
 type Item = {
@@ -107,12 +108,18 @@ export default function Home() {
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [now, setNow] = useState<Date | null>(null);
   const [saveStatus, setSaveStatus] = useState(supabase ? "SUPABASE CONNECTED" : "LOCAL ONLY");
+  const [user, setUser] = useState<User | null>(null);
+  const [authEmail, setAuthEmail] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [editMode, setEditMode] = useState(false);
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const dragRef = useRef<DragState | null>(null);
   const activeMonth = months[activeMonthIndex];
+  const canEdit = editMode && Boolean(user);
 
   useEffect(() => {
     setNow(new Date());
+    setEditMode(new URLSearchParams(window.location.search).get("edit") === "1");
     const interval = window.setInterval(() => setNow(new Date()), 1000);
 
     return () => window.clearInterval(interval);
@@ -121,6 +128,21 @@ export default function Home() {
   useEffect(() => {
     imagesByBoardRef.current = imagesByBoard;
   }, [imagesByBoard]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    supabase.auth.getSession().then(({ data }) => {
+      setUser(data.session?.user ?? null);
+    });
+
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+      setAuthMessage("");
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     async function loadFavorites() {
@@ -181,6 +203,8 @@ export default function Home() {
   }
 
   async function uploadImageFile(file: File, imageKey: string) {
+    if (!canEdit) throw new Error("Sign in to add images.");
+
     if (!supabase) {
       return {
         src: URL.createObjectURL(file),
@@ -206,6 +230,11 @@ export default function Home() {
     categoryIndex: number,
     image: CanvasImage,
   ) {
+    if (!canEdit) {
+      setSaveStatus("SIGN IN TO EDIT");
+      return;
+    }
+
     if (!supabase || !image.storagePath) {
       setSaveStatus("LOCAL ONLY");
       return;
@@ -240,6 +269,12 @@ export default function Home() {
   async function addImages(event: ChangeEvent<HTMLInputElement>, categoryIndex: number) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
+    if (!canEdit) {
+      setSaveStatus("SIGN IN TO EDIT");
+      event.target.value = "";
+      return;
+    }
+
     const imageKey = boardKey(categoryIndex);
 
     try {
@@ -291,6 +326,8 @@ export default function Home() {
     imageId: string,
   ) {
     event.stopPropagation();
+    if (!canEdit) return;
+
     const imageRect = event.currentTarget.getBoundingClientRect();
     setSelectedImageId(imageId);
     dragRef.current = {
@@ -309,6 +346,8 @@ export default function Home() {
     imageId: string,
   ) {
     event.stopPropagation();
+    if (!canEdit) return;
+
     setSelectedImageId(imageId);
     dragRef.current = {
       mode: "resize",
@@ -321,6 +360,8 @@ export default function Home() {
   }
 
   function updateImageFromPointer(event: PointerEvent<HTMLElement>) {
+    if (!canEdit) return;
+
     const drag = dragRef.current;
     const canvas = event.currentTarget.closest(".imageCanvas");
     if (!drag || !canvas) return;
@@ -369,6 +410,8 @@ export default function Home() {
 
   function stopDrag(event: PointerEvent<HTMLElement>) {
     event.stopPropagation();
+    if (!canEdit) return;
+
     const drag = dragRef.current;
 
     if (drag) {
@@ -386,6 +429,8 @@ export default function Home() {
   }
 
   function rotateImage(imageKey: string, imageId: string, amount: number) {
+    if (!canEdit) return;
+
     const categoryIndex = categoryIndexFromBoardKey(imageKey);
     const image = imagesByBoardRef.current[imageKey]?.find(
       (currentImage) => currentImage.id === imageId,
@@ -410,6 +455,8 @@ export default function Home() {
   }
 
   function removeImage(imageKey: string, imageId: string) {
+    if (!canEdit) return;
+
     const image = imagesByBoardRef.current[imageKey]?.find(
       (currentImage) => currentImage.id === imageId,
     );
@@ -438,6 +485,33 @@ export default function Home() {
     if (selectedImageId === imageId) setSelectedImageId(null);
   }
 
+  async function signIn(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !authEmail.trim()) return;
+
+    setAuthMessage("CHECK EMAIL");
+    const { error } = await supabase.auth.signInWithOtp({
+      email: authEmail.trim(),
+      options: {
+        emailRedirectTo: window.location.origin,
+      },
+    });
+
+    if (error) {
+      console.error("Could not sign in:", error.message);
+      setAuthMessage("SIGN IN ERROR");
+      return;
+    }
+
+    setAuthMessage("MAGIC LINK SENT");
+  }
+
+  async function signOut() {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+    setSelectedImageId(null);
+  }
+
   return (
     <main className="page">
       <time className="topTimestamp" dateTime={now?.toISOString()}>
@@ -452,7 +526,32 @@ export default function Home() {
             }).format(now)
           : ""}
       </time>
-      <span className="saveStatus">{saveStatus}</span>
+      {editMode || user ? (
+        <form className="authBar" onSubmit={signIn}>
+          {user ? (
+            <>
+              <span className="authUser">{user.email}</span>
+              <button className="authButton" type="button" onClick={signOut}>
+                SIGN OUT
+              </button>
+            </>
+          ) : (
+            <>
+              <input
+                className="authInput"
+                type="email"
+                placeholder="email to edit"
+                value={authEmail}
+                onChange={(event) => setAuthEmail(event.target.value)}
+              />
+              <button className="authButton" type="submit">
+                SIGN IN
+              </button>
+              {authMessage ? <span className="authMessage">{authMessage}</span> : null}
+            </>
+          )}
+        </form>
+      ) : null}
 
       <nav className="monthRail" aria-label="Monthly favorite boards">
         {months.map((month, index) => (
@@ -514,25 +613,29 @@ export default function Home() {
                         {activeMonth.label} favorites. {item.note}
                       </span>
                     </span>
-                    <label className="addButton" onClick={(event) => event.stopPropagation()}>
-                      <span aria-hidden="true">+</span>
-                      <span className="srOnly">Add images to {item.label}</span>
-                      <input
-                        className="fileInput"
-                        type="file"
-                        accept="image/*"
-                        multiple
-                        tabIndex={isActive ? 0 : -1}
-                        onChange={(event) => addImages(event, index)}
-                      />
-                    </label>
+                    {canEdit ? (
+                      <label className="addButton" onClick={(event) => event.stopPropagation()}>
+                        <span aria-hidden="true">+</span>
+                        <span className="srOnly">Add images to {item.label}</span>
+                        <input
+                          className="fileInput"
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          tabIndex={isActive ? 0 : -1}
+                          onChange={(event) => addImages(event, index)}
+                        />
+                      </label>
+                    ) : (
+                      <span className="viewerBadge">VIEW ONLY</span>
+                    )}
                   </span>
                   <span className="imageCanvas">
                     {boardImages.map((image) => (
                       <span
                         key={image.id}
                         className="imageItem"
-                        data-selected={selectedImageId === image.id}
+                        data-selected={canEdit && selectedImageId === image.id}
                         style={
                           {
                             left: `${image.x}%`,
@@ -547,49 +650,53 @@ export default function Home() {
                         onPointerCancel={stopDrag}
                       >
                         <img className="canvasImage" src={image.src} alt="" draggable={false} />
-                        <span className="imageControls" onPointerDown={(event) => event.stopPropagation()}>
-                          <button
-                            className="imageControl"
-                            type="button"
-                            aria-label="Rotate left"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              rotateImage(imageKey, image.id, -15);
-                            }}
-                          >
-                            -15
-                          </button>
-                          <button
-                            className="imageControl"
-                            type="button"
-                            aria-label="Rotate right"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              rotateImage(imageKey, image.id, 15);
-                            }}
-                          >
-                            +15
-                          </button>
-                          <button
-                            className="imageControl"
-                            type="button"
-                            aria-label="Delete image"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              removeImage(imageKey, image.id);
-                            }}
-                          >
-                            x
-                          </button>
-                        </span>
-                        <span
-                          className="resizeHandle"
-                          aria-hidden="true"
-                          onPointerDown={(event) => startResize(event, imageKey, image.id)}
-                          onPointerMove={updateImageFromPointer}
-                          onPointerUp={stopDrag}
-                          onPointerCancel={stopDrag}
-                        />
+                        {canEdit ? (
+                          <>
+                            <span className="imageControls" onPointerDown={(event) => event.stopPropagation()}>
+                              <button
+                                className="imageControl"
+                                type="button"
+                                aria-label="Rotate left"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  rotateImage(imageKey, image.id, -15);
+                                }}
+                              >
+                                -15
+                              </button>
+                              <button
+                                className="imageControl"
+                                type="button"
+                                aria-label="Rotate right"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  rotateImage(imageKey, image.id, 15);
+                                }}
+                              >
+                                +15
+                              </button>
+                              <button
+                                className="imageControl"
+                                type="button"
+                                aria-label="Delete image"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  removeImage(imageKey, image.id);
+                                }}
+                              >
+                                x
+                              </button>
+                            </span>
+                            <span
+                              className="resizeHandle"
+                              aria-hidden="true"
+                              onPointerDown={(event) => startResize(event, imageKey, image.id)}
+                              onPointerMove={updateImageFromPointer}
+                              onPointerUp={stopDrag}
+                              onPointerCancel={stopDrag}
+                            />
+                          </>
+                        ) : null}
                       </span>
                     ))}
                   </span>
