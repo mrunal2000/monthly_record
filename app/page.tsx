@@ -2,7 +2,6 @@
 
 import type { CSSProperties, ChangeEvent, FormEvent, PointerEvent } from "react";
 import {
-  startTransition,
   useCallback,
   useEffect,
   useMemo,
@@ -306,9 +305,7 @@ export default function Home() {
   );
 
   const clearCanvasSelection = useCallback(() => {
-    startTransition(() => {
-      setSelectedImageId(null);
-    });
+    setSelectedImageId(null);
   }, []);
 
   useEffect(() => {
@@ -355,10 +352,10 @@ export default function Home() {
   }, [theme]);
 
   function openFrame(index: number) {
-    if (index !== activeIndex) {
-      setOpenDirection(index > activeIndex ? "ltr" : "rtl");
+    if (index === activeIndex) {
+      return;
     }
-
+    setOpenDirection(index > activeIndex ? "ltr" : "rtl");
     setActiveIndex(index);
     setSelectedImageId(null);
   }
@@ -848,12 +845,29 @@ export default function Home() {
     }
   }
 
-  function removeImage(imageKey: string, imageId: string) {
+  async function removeImage(imageKey: string, imageId: string) {
     if (!canEdit) return;
 
     const image = imagesByBoardRef.current[imageKey]?.find(
       (currentImage) => currentImage.id === imageId,
     );
+
+    if (supabase) {
+      setSaveStatus("DELETING");
+      const { error } = await supabase.from(FAVORITES_TABLE).delete().eq("id", imageId);
+      if (error) {
+        console.error("Could not delete favorite from Supabase:", error.message);
+        setSaveStatus("DELETE ERROR");
+        return;
+      }
+      if (image?.storagePath) {
+        const { error: storageError } = await supabase.storage
+          .from(FAVORITES_BUCKET)
+          .remove([image.storagePath]);
+        if (storageError) console.error("Could not delete stored file:", storageError.message);
+      }
+      setSaveStatus("SAVED");
+    }
 
     setImagesByBoard((current) => {
       const next = {
@@ -864,17 +878,6 @@ export default function Home() {
 
       return next;
     });
-
-    if (supabase) {
-      setSaveStatus("SAVING");
-      void supabase.from(FAVORITES_TABLE).delete().eq("id", imageId);
-
-      if (image?.storagePath) {
-        void supabase.storage.from(FAVORITES_BUCKET).remove([image.storagePath]);
-      }
-
-      setSaveStatus("SAVED");
-    }
 
     if (selectedImageId === imageId) setSelectedImageId(null);
   }
@@ -1131,7 +1134,7 @@ export default function Home() {
               </span>
               <span className="frameRect">
                 <span className="frameContent" aria-hidden={!isActive}>
-                  <span className="canvasHeader">
+                  <span className="canvasHeader" onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}>
                     <span
                       className="frameHeadingBlock"
                       onPointerDown={(event) => event.stopPropagation()}
@@ -1228,15 +1231,20 @@ export default function Home() {
                           <button
                             className="deleteSelectedButton"
                             type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
-                              removeImage(imageKey, selectedImage.id);
+                              void removeImage(imageKey, selectedImage.id);
                             }}
                           >
                             DELETE SELECTED
                           </button>
                         ) : null}
-                        <label className="addButton" onClick={(event) => event.stopPropagation()}>
+                        <label
+                          className="addButton"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           <span aria-hidden="true">+</span>
                           <span className="srOnly">
                             Add images to{" "}
@@ -1262,6 +1270,9 @@ export default function Home() {
                         key={image.id}
                         className="imageItem"
                         data-selected={canEdit && selectedImageId === image.id}
+                        onClick={(event) => {
+                          if (canEdit) event.stopPropagation();
+                        }}
                         style={
                           {
                             left: `${image.x}%`,
@@ -1310,7 +1321,7 @@ export default function Home() {
                                 aria-label="Delete image"
                                 onClick={(event) => {
                                   event.stopPropagation();
-                                  removeImage(imageKey, image.id);
+                                  void removeImage(imageKey, image.id);
                                 }}
                               >
                                 x
