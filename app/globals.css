@@ -249,6 +249,16 @@ body {
   color: var(--bg);
 }
 
+.authButton:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.authButton:disabled:hover {
+  background: var(--bg);
+  color: var(--ink);
+}
+
 .authUser,
 .authMessage {
   max-width: 180px;
@@ -410,6 +420,18 @@ body {
 .monthButton:focus-visible {
   outline: 2px solid var(--ink);
   outline-offset: -4px;
+}
+
+.monthButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.monthButton:disabled:hover,
+.monthButton[data-active="true"]:disabled {
+  background: var(--bg);
+  color: var(--ink);
 }
 
 .frameManagerBar {
@@ -1016,6 +1038,13 @@ html[data-theme="minimal"] .monthButton[data-current="true"] {
 html[data-theme="minimal"] .monthButton:focus-visible {
   outline: 2px solid rgb(0 113 227 / 0.45);
   outline-offset: 2px;
+}
+
+html[data-theme="minimal"] .monthButton:disabled:hover,
+html[data-theme="minimal"] .monthButton[data-active="true"]:disabled {
+  background: transparent;
+  color: var(--ink);
+  font-weight: 400;
 }
 
 /* Minimal frames: white fills + light gray rules */

@@ -9,6 +9,22 @@ import {
   useState,
 } from "react";
 import type { User } from "@supabase/supabase-js";
+
+/** Supabase rejects bursts of OTP / magic-link emails (429); map for clearer UI. */
+function isEmailSendRateLimited(
+  status: unknown,
+  message?: string | null,
+  code?: string | null,
+) {
+  if (typeof status === "number" && status === 429) return true;
+  const blob = `${code ?? ""} ${message ?? ""}`.toLowerCase();
+  return (
+    blob.includes("rate limit") ||
+    blob.includes("rate_limit") ||
+    blob.includes("over_email_send") ||
+    blob.includes("too many")
+  );
+}
 import { FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
 
 type Category = {
@@ -274,6 +290,8 @@ export default function Home() {
   const [authMessage, setAuthMessage] = useState("");
   const [authAwaitingCode, setAuthAwaitingCode] = useState(false);
   const [authOtp, setAuthOtp] = useState("");
+  const [authRequestBusy, setAuthRequestBusy] = useState(false);
+  const otpSendCooldownUntilRef = useRef(0);
   const [editMode, setEditMode] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>("brutalist");
@@ -447,6 +465,7 @@ export default function Home() {
       setAuthMessage("");
       setAuthAwaitingCode(false);
       setAuthOtp("");
+      setAuthRequestBusy(false);
     });
 
     return () => data.subscription.unsubscribe();
@@ -921,54 +940,88 @@ export default function Home() {
   }
 
   async function sendEmailOtp() {
-    if (!supabase || !authEmail.trim()) return;
+    if (!supabase || !authEmail.trim() || authRequestBusy) return;
 
-    setAuthOtp("");
-    setAuthMessage("CHECK EMAIL");
-    const origin = typeof window !== "undefined" ? window.location.origin : "";
-    const { error } = await supabase.auth.signInWithOtp({
-      email: authEmail.trim(),
-      options: {
-        ...(origin ? { emailRedirectTo: `${origin}?edit=1` } : {}),
-      },
-    });
-
-    if (error) {
-      console.error("Could not sign in:", error.message);
-      setAuthMessage("SIGN IN ERROR");
-      setAuthAwaitingCode(false);
+    const now = Date.now();
+    if (now < otpSendCooldownUntilRef.current) {
+      const sec = Math.ceil((otpSendCooldownUntilRef.current - now) / 1000);
+      setAuthMessage(
+        theme === "minimal"
+          ? `Wait ${sec}s before requesting another sign-in email.`
+          : `WAIT ${sec}s BEFORE ANOTHER SIGN-IN EMAIL`,
+      );
       return;
     }
 
-    setAuthAwaitingCode(true);
-    setAuthMessage("MAGIC LINK SENT · USE CODE IN APP IF NO LINK");
+    setAuthRequestBusy(true);
+    setAuthOtp("");
+    setAuthMessage(theme === "minimal" ? "Sending…" : "SENDING···");
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
+
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: authEmail.trim(),
+        options: {
+          ...(origin ? { emailRedirectTo: `${origin}?edit=1` } : {}),
+        },
+      });
+
+      if (error) {
+        console.error("Could not sign in:", error.message);
+        if (isEmailSendRateLimited(error.status, error.message, error.code)) {
+          otpSendCooldownUntilRef.current = Date.now() + 65_000;
+          setAuthMessage(
+            theme === "minimal"
+              ? "Too many sign-in emails (Supabase limit). Wait about a minute, then try again. You can raise the limit in the Supabase dashboard under Authentication → Rate limits."
+              : "EMAIL RATE LIMIT · WAIT ~1 MIN · SUPABASE DASHBOARD → AUTH → RATE LIMITS",
+          );
+        } else {
+          const short =
+            error.message.length > 80 ? `${error.message.slice(0, 77)}…` : error.message;
+          setAuthMessage(theme === "minimal" ? short : "SIGN IN ERROR");
+        }
+        setAuthAwaitingCode(false);
+        return;
+      }
+
+      setAuthAwaitingCode(true);
+      setAuthMessage("MAGIC LINK SENT · USE CODE IN APP IF NO LINK");
+    } finally {
+      setAuthRequestBusy(false);
+    }
   }
 
   async function verifyEmailOtp() {
-    if (!supabase || !authEmail.trim() || !authOtp.trim()) return;
+    if (!supabase || !authEmail.trim() || !authOtp.trim() || authRequestBusy) return;
 
     const token = authOtp.replace(/\s/g, "");
-    setAuthMessage("VERIFYING · · ·");
+    setAuthRequestBusy(true);
+    setAuthMessage(theme === "minimal" ? "Verifying…" : "VERIFYING · · ·");
 
-    const { error } = await supabase.auth.verifyOtp({
-      email: authEmail.trim(),
-      token,
-      type: "email",
-    });
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: authEmail.trim(),
+        token,
+        type: "email",
+      });
 
-    if (error) {
-      console.error("Could not verify code:", error.message);
-      setAuthMessage("BAD OR EXPIRED CODE");
-      return;
+      if (error) {
+        console.error("Could not verify code:", error.message);
+        setAuthMessage("BAD OR EXPIRED CODE");
+        return;
+      }
+
+      setAuthAwaitingCode(false);
+      setAuthOtp("");
+    } finally {
+      setAuthRequestBusy(false);
     }
-
-    setAuthAwaitingCode(false);
-    setAuthOtp("");
   }
 
   async function submitAuthForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!supabase || !authEmail.trim()) return;
+    if (authRequestBusy) return;
     if (authAwaitingCode) await verifyEmailOtp();
     else await sendEmailOtp();
   }
@@ -979,6 +1032,8 @@ export default function Home() {
     setSelectedImageId(null);
     setAuthAwaitingCode(false);
     setAuthOtp("");
+    setAuthRequestBusy(false);
+    otpSendCooldownUntilRef.current = 0;
   }
 
   function leaveEditFlow() {
@@ -1072,6 +1127,7 @@ export default function Home() {
                 setAuthAwaitingCode(false);
                 setAuthOtp("");
                 setAuthMessage("");
+                otpSendCooldownUntilRef.current = 0;
               }}
               autoComplete="email"
               inputMode="email"
@@ -1101,12 +1157,16 @@ export default function Home() {
                     }
                   }}
                 />
-                <button className="authButton" type="submit">
+                <button
+                  className="authButton"
+                  type="submit"
+                  disabled={authRequestBusy || !authOtp.trim()}
+                >
                   {theme === "minimal" ? "Verify code" : "VERIFY CODE"}
                 </button>
               </>
             ) : (
-              <button className="authButton" type="submit">
+              <button className="authButton" type="submit" disabled={authRequestBusy || !authEmail.trim()}>
                 SIGN IN
               </button>
             )}
@@ -1139,10 +1199,18 @@ export default function Home() {
 
       <nav className="monthRail" aria-label="Monthly favorite boards">
         {months.map((month, index) => {
+          const isFutureMonth = index > currentMonthIndex;
           const isPastMonth = index < currentMonthIndex;
           const pastCount = isPastMonth ? pastMonthBoardImageCounts[index] : null;
           const showEmptyPastBadge = pastCount !== null && pastCount === 0;
           const navLabel = theme === "minimal" ? formatMonthNavLabel(month.id) : month.label;
+          const unavailableLabel =
+            theme === "minimal" ? `${navLabel}, upcoming month • not yet available` : `${navLabel}, UPCOMING · NOT AVAILABLE YET`;
+
+          let ariaLabel = navLabel;
+          if (showEmptyPastBadge) ariaLabel = `${navLabel}, empty`;
+          else if (isFutureMonth) ariaLabel = unavailableLabel;
+
           return (
             <button
               key={month.id}
@@ -1150,9 +1218,8 @@ export default function Home() {
               data-active={index === activeMonthIndex ? "true" : undefined}
               data-current={index === currentMonthIndex ? "true" : undefined}
               type="button"
-              aria-label={
-                showEmptyPastBadge ? `${navLabel}, empty` : navLabel
-              }
+              disabled={isFutureMonth}
+              aria-label={ariaLabel}
               onClick={() => {
                 setActiveMonthIndex(index);
                 setSelectedImageId(null);
