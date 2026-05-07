@@ -54,9 +54,8 @@ const DEFAULT_CATEGORIES: Category[] = [
   },
 ];
 
-type BoardImageItem = {
+type CanvasImage = {
   id: string;
-  kind: "image";
   src: string;
   storagePath?: string;
   x: number;
@@ -64,18 +63,6 @@ type BoardImageItem = {
   width: number;
   rotation: number;
 };
-
-type BoardTextItem = {
-  id: string;
-  kind: "text";
-  body: string;
-  x: number;
-  y: number;
-  width: number;
-  rotation: number;
-};
-
-type BoardItem = BoardImageItem | BoardTextItem;
 
 type FavoriteItemRow = {
   id: string;
@@ -85,8 +72,6 @@ type FavoriteItemRow = {
   category_label: string;
   image_url: string | null;
   storage_path: string | null;
-  item_kind?: string | null;
-  text_content?: string | null;
   x: number;
   y: number;
   width: number;
@@ -95,8 +80,8 @@ type FavoriteItemRow = {
 
 type DragState = {
   mode: "move" | "resize";
-  paneKey: string;
-  itemId: string;
+  imageKey: string;
+  imageId: string;
   offsetX: number;
   offsetY: number;
 };
@@ -124,27 +109,6 @@ const months = [
   { id: "nov", label: "NOV" },
   { id: "dec", label: "DEC" },
 ];
-
-function rowToBoardItem(row: FavoriteItemRow): BoardItem | null {
-  const shared = {
-    id: row.id,
-    x: row.x,
-    y: row.y,
-    width: row.width,
-    rotation: row.rotation,
-  };
-  if (row.item_kind === "text") {
-    return { ...shared, kind: "text", body: row.text_content ?? "" };
-  }
-  const src = row.image_url;
-  if (!src) return null;
-  return {
-    ...shared,
-    kind: "image",
-    src,
-    storagePath: row.storage_path ?? undefined,
-  };
-}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
@@ -197,8 +161,8 @@ export default function Home() {
   const [activeMonthIndex, setActiveMonthIndex] = useState(currentMonthIndex);
   const [activeIndex, setActiveIndex] = useState(0);
   const [openDirection, setOpenDirection] = useState<OpenDirection>("ltr");
-  const [itemsByBoard, setItemsByBoard] = useState<Record<string, BoardItem[]>>({});
-  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [imagesByBoard, setImagesByBoard] = useState<Record<string, CanvasImage[]>>({});
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [now, setNow] = useState<Date | null>(null);
   const [saveStatus, setSaveStatus] = useState(supabase ? "SUPABASE CONNECTED" : "LOCAL ONLY");
   const [user, setUser] = useState<User | null>(null);
@@ -209,7 +173,7 @@ export default function Home() {
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
   const [newFrameName, setNewFrameName] = useState("");
-  const itemsByBoardRef = useRef<Record<string, BoardItem[]>>({});
+  const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
   const dragRef = useRef<DragState | null>(null);
@@ -239,12 +203,12 @@ export default function Home() {
     }
 
     setActiveIndex(index);
-    setSelectedItemId(null);
+    setSelectedImageId(null);
   }
 
   useEffect(() => {
-    itemsByBoardRef.current = itemsByBoard;
-  }, [itemsByBoard]);
+    imagesByBoardRef.current = imagesByBoard;
+  }, [imagesByBoard]);
 
   useEffect(() => {
     categoriesRef.current = categories;
@@ -326,9 +290,7 @@ export default function Home() {
 
       const { data, error } = await supabase
         .from(FAVORITES_TABLE)
-        .select(
-          "id, board_key, month_id, category_index, category_label, image_url, storage_path, item_kind, text_content, x, y, width, rotation",
-        )
+        .select("id, board_key, month_id, category_index, category_label, image_url, storage_path, x, y, width, rotation")
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -337,20 +299,30 @@ export default function Home() {
         return;
       }
 
-      const grouped = (data as FavoriteItemRow[]).reduce<Record<string, BoardItem[]>>(
+      const grouped = (data as FavoriteItemRow[]).reduce<Record<string, CanvasImage[]>>(
         (boards, row) => {
+          if (!row.image_url) return boards;
           const key = canonicalBoardKey(row.board_key);
-          const boardItem = rowToBoardItem(row as FavoriteItemRow);
-          if (!boardItem) return boards;
-          boards[key] = [...(boards[key] ?? []), boardItem];
+          boards[key] = [
+            ...(boards[key] ?? []),
+            {
+              id: row.id,
+              src: row.image_url,
+              storagePath: row.storage_path ?? undefined,
+              x: row.x,
+              y: row.y,
+              width: row.width,
+              rotation: row.rotation,
+            },
+          ];
 
           return boards;
         },
         {},
       );
 
-      itemsByBoardRef.current = grouped;
-      setItemsByBoard(grouped);
+      imagesByBoardRef.current = grouped;
+      setImagesByBoard(grouped);
       setSaveStatus("SUPABASE CONNECTED");
     }
 
@@ -368,7 +340,7 @@ export default function Home() {
 
   function countImagesForMonth(monthIndex: number) {
     return categories.reduce(
-      (sum, cat) => sum + (itemsByBoard[boardKey(cat.id, monthIndex)]?.length ?? 0),
+      (sum, cat) => sum + (imagesByBoard[boardKey(cat.id, monthIndex)]?.length ?? 0),
       0,
     );
   }
@@ -442,24 +414,19 @@ export default function Home() {
     };
   }
 
-  async function saveBoardItemRecord(paneKey: string, categoryId: string, boardItem: BoardItem) {
+  async function saveImageRecord(imageKey: string, categoryId: string, image: CanvasImage) {
     if (!canEdit) {
       setSaveStatus("SIGN IN TO EDIT");
       return;
     }
 
-    if (!supabase) {
-      setSaveStatus("LOCAL ONLY");
-      return;
-    }
-
-    if (boardItem.kind === "image" && !boardItem.storagePath) {
+    if (!supabase || !image.storagePath) {
       setSaveStatus("LOCAL ONLY");
       return;
     }
 
     setSaveStatus("SAVING");
-    const monthId = monthIdFromBoardKey(paneKey);
+    const monthId = monthIdFromBoardKey(imageKey);
     const cats = categoriesRef.current;
     const categoryIndex = cats.findIndex((c) => c.id === categoryId);
     const categoryLabel =
@@ -467,43 +434,23 @@ export default function Home() {
       cats[0]?.label ??
       "?";
 
-    const baseRow = {
-      id: boardItem.id,
-      board_key: canonicalBoardKey(paneKey),
+    const { error } = await supabase.from(FAVORITES_TABLE).upsert({
+      id: image.id,
+      board_key: canonicalBoardKey(imageKey),
       month_id: monthId,
       category_index: categoryIndex >= 0 ? categoryIndex : 0,
       category_label: categoryLabel,
-      x: boardItem.x,
-      y: boardItem.y,
-      width: boardItem.width,
-      rotation: boardItem.rotation,
+      image_url: image.src,
+      storage_path: image.storagePath,
+      x: image.x,
+      y: image.y,
+      width: image.width,
+      rotation: image.rotation,
       updated_at: new Date().toISOString(),
-    };
-
-    let error: { message: string } | null = null;
-
-    if (boardItem.kind === "image") {
-      const result = await supabase.from(FAVORITES_TABLE).upsert({
-        ...baseRow,
-        item_kind: "image",
-        image_url: boardItem.src,
-        storage_path: boardItem.storagePath as string,
-        text_content: null,
-      });
-      error = result.error;
-    } else {
-      const result = await supabase.from(FAVORITES_TABLE).upsert({
-        ...baseRow,
-        item_kind: "text",
-        image_url: null,
-        storage_path: null,
-        text_content: boardItem.body,
-      });
-      error = result.error;
-    }
+    });
 
     if (error) {
-      console.error("Could not save board item:", error.message);
+      console.error("Could not save favorite item:", error.message);
       setSaveStatus("SAVE ERROR");
       return;
     }
@@ -524,14 +471,13 @@ export default function Home() {
 
     try {
       setSaveStatus(supabase ? "SAVING" : "LOCAL ONLY");
-      const existing = itemsByBoardRef.current[imageKey] ?? [];
+      const existing = imagesByBoardRef.current[imageKey] ?? [];
       const nextImages = await Promise.all(
         files.map(async (file, fileIndex) => {
           const uploaded = await uploadImageFile(file, imageKey);
 
           return {
             id: crypto.randomUUID(),
-            kind: "image" as const,
             src: uploaded.src,
             storagePath: uploaded.storagePath,
             x: 12 + ((existing.length + fileIndex) % 4) * 9,
@@ -542,18 +488,18 @@ export default function Home() {
         }),
       );
 
-      setItemsByBoard((current) => {
+      setImagesByBoard((current) => {
         const next = {
           ...current,
           [imageKey]: [...(current[imageKey] ?? []), ...nextImages],
         };
-        itemsByBoardRef.current = next;
+        imagesByBoardRef.current = next;
 
         return next;
       });
 
       await Promise.all(
-        nextImages.map((entry) => saveBoardItemRecord(imageKey, categoryId, entry)),
+        nextImages.map((entry) => saveImageRecord(imageKey, categoryId, entry)),
       );
     } catch (error) {
       console.error(
@@ -566,84 +512,38 @@ export default function Home() {
     event.target.value = "";
   }
 
-  function addCanvasText(categoryId: string) {
-    if (!canEdit) {
-      setSaveStatus("SIGN IN TO EDIT");
-      return;
-    }
-
-    const paneKey = boardKey(categoryId);
-    const existing = itemsByBoardRef.current[paneKey] ?? [];
-    const nextItem: BoardTextItem = {
-      id: crypto.randomUUID(),
-      kind: "text",
-      body: "",
-      x: 14 + (existing.length % 4) * 7,
-      y: 26 + (existing.length % 3) * 9,
-      width: 38,
-      rotation: 0,
-    };
-
-    setItemsByBoard((current) => {
-      const next = {
-        ...current,
-        [paneKey]: [...(current[paneKey] ?? []), nextItem],
-      };
-      itemsByBoardRef.current = next;
-
-      return next;
-    });
-
-    setSelectedItemId(nextItem.id);
-    void saveBoardItemRecord(paneKey, categoryId, nextItem);
-  }
-
-  function updateTextItemBody(paneKey: string, itemId: string, body: string) {
-    setItemsByBoard((current) => {
-      const next = {
-        ...current,
-        [paneKey]: (current[paneKey] ?? []).map((it) =>
-          it.id === itemId && it.kind === "text" ? { ...it, body } : it,
-        ),
-      };
-      itemsByBoardRef.current = next;
-
-      return next;
-    });
-  }
-
-  function startDrag(event: PointerEvent<HTMLElement>, paneKey: string, itemId: string) {
+  function startDrag(event: PointerEvent<HTMLElement>, imageKey: string, imageId: string) {
     event.stopPropagation();
     if (!canEdit) return;
 
     const imageRect = event.currentTarget.getBoundingClientRect();
-    setSelectedItemId(itemId);
+    setSelectedImageId(imageId);
     dragRef.current = {
       mode: "move",
-      paneKey,
-      itemId,
+      imageKey,
+      imageId,
       offsetX: event.clientX - imageRect.left,
       offsetY: event.clientY - imageRect.top,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function startResize(event: PointerEvent<HTMLSpanElement>, paneKey: string, itemId: string) {
+  function startResize(event: PointerEvent<HTMLSpanElement>, imageKey: string, imageId: string) {
     event.stopPropagation();
     if (!canEdit) return;
 
-    setSelectedItemId(itemId);
+    setSelectedImageId(imageId);
     dragRef.current = {
       mode: "resize",
-      paneKey,
-      itemId,
+      imageKey,
+      imageId,
       offsetX: 0,
       offsetY: 0,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
 
-  function updateItemFromPointer(event: PointerEvent<HTMLElement>) {
+  function updateImageFromPointer(event: PointerEvent<HTMLElement>) {
     if (!canEdit) return;
 
     const drag = dragRef.current;
@@ -654,23 +554,23 @@ export default function Home() {
     const canvasRect = canvas.getBoundingClientRect();
     const itemRect = drag.mode === "move" ? event.currentTarget.getBoundingClientRect() : null;
 
-    setItemsByBoard((current) => {
+    setImagesByBoard((current) => {
       const next = {
         ...current,
-        [drag.paneKey]: (current[drag.paneKey] ?? []).map((boardItem) =>
-          boardItem.id === drag.itemId
-            ? getUpdatedBoardItem(boardItem, event, canvasRect, drag, itemRect)
-            : boardItem,
+        [drag.imageKey]: (current[drag.imageKey] ?? []).map((image) =>
+          image.id === drag.imageId
+            ? getUpdatedImage(image, event, canvasRect, drag, itemRect)
+            : image,
         ),
       };
-      itemsByBoardRef.current = next;
+      imagesByBoardRef.current = next;
 
       return next;
     });
   }
 
-  function getUpdatedBoardItem(
-    boardItem: BoardItem,
+  function getUpdatedImage(
+    image: CanvasImage,
     event: PointerEvent<HTMLElement>,
     canvasRect: DOMRect,
     drag: DragState,
@@ -678,22 +578,18 @@ export default function Home() {
   ) {
     if (drag.mode === "resize") {
       const pointerX = ((event.clientX - canvasRect.left) / canvasRect.width) * 100;
-      const nextWidth = pointerX - boardItem.x;
-      return {
-        ...boardItem,
-        width: clamp(nextWidth, 12, Math.max(12, 100 - boardItem.x)),
-      };
+      const nextWidth = pointerX - image.x;
+      return { ...image, width: clamp(nextWidth, 16, Math.max(16, 100 - image.x)) };
     }
 
-    const itemWidth =
-      itemRect?.width ?? ((boardItem.width / 100) * canvasRect.width);
+    const itemWidth = itemRect?.width ?? (image.width / 100) * canvasRect.width;
     const itemHeight = itemRect?.height ?? 0;
     const x = ((event.clientX - canvasRect.left - drag.offsetX) / canvasRect.width) * 100;
     const y = ((event.clientY - canvasRect.top - drag.offsetY) / canvasRect.height) * 100;
     const maxX = ((canvasRect.width - itemWidth) / canvasRect.width) * 100;
     const maxY = ((canvasRect.height - itemHeight) / canvasRect.height) * 100;
 
-    return { ...boardItem, x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) };
+    return { ...image, x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) };
   }
 
   function stopDrag(event: PointerEvent<HTMLElement>) {
@@ -703,72 +599,74 @@ export default function Home() {
     const drag = dragRef.current;
 
     if (drag) {
-      const boardItem = itemsByBoardRef.current[drag.paneKey]?.find(
-        (entry) => entry.id === drag.itemId,
+      const image = imagesByBoardRef.current[drag.imageKey]?.find(
+        (currentImage) => currentImage.id === drag.imageId,
       );
-      const categoryId = categoryIdFromBoardKey(drag.paneKey);
+      const categoryId = categoryIdFromBoardKey(drag.imageKey);
 
-      if (boardItem && categoryId) {
-        void saveBoardItemRecord(drag.paneKey, categoryId, boardItem);
+      if (image && categoryId) {
+        void saveImageRecord(drag.imageKey, categoryId, image);
       }
     }
 
     dragRef.current = null;
   }
 
-  function rotateBoardItem(paneKey: string, itemId: string, amount: number) {
+  function rotateImage(imageKey: string, imageId: string, amount: number) {
     if (!canEdit) return;
 
-    const categoryId = categoryIdFromBoardKey(paneKey);
-    const prev = itemsByBoardRef.current[paneKey]?.find((entry) => entry.id === itemId);
-    const updated = prev ? { ...prev, rotation: prev.rotation + amount } : null;
+    const categoryId = categoryIdFromBoardKey(imageKey);
+    const image = imagesByBoardRef.current[imageKey]?.find(
+      (currentImage) => currentImage.id === imageId,
+    );
+    const updatedImage = image ? { ...image, rotation: image.rotation + amount } : null;
 
-    setItemsByBoard((current) => {
+    setImagesByBoard((current) => {
       const next = {
         ...current,
-        [paneKey]: (current[paneKey] ?? []).map((boardItem) =>
-          boardItem.id === itemId
-            ? { ...boardItem, rotation: boardItem.rotation + amount }
-            : boardItem,
+        [imageKey]: (current[imageKey] ?? []).map((image) =>
+          image.id === imageId ? { ...image, rotation: image.rotation + amount } : image,
         ),
       };
-      itemsByBoardRef.current = next;
+      imagesByBoardRef.current = next;
 
       return next;
     });
 
-    if (updated && categoryId) {
-      void saveBoardItemRecord(paneKey, categoryId, updated);
+    if (updatedImage && categoryId) {
+      void saveImageRecord(imageKey, categoryId, updatedImage);
     }
   }
 
-  function removeBoardItem(paneKey: string, itemId: string) {
+  function removeImage(imageKey: string, imageId: string) {
     if (!canEdit) return;
 
-    const removed = itemsByBoardRef.current[paneKey]?.find((entry) => entry.id === itemId);
+    const image = imagesByBoardRef.current[imageKey]?.find(
+      (currentImage) => currentImage.id === imageId,
+    );
 
-    setItemsByBoard((current) => {
+    setImagesByBoard((current) => {
       const next = {
         ...current,
-        [paneKey]: (current[paneKey] ?? []).filter((boardItem) => boardItem.id !== itemId),
+        [imageKey]: (current[imageKey] ?? []).filter((currentImage) => currentImage.id !== imageId),
       };
-      itemsByBoardRef.current = next;
+      imagesByBoardRef.current = next;
 
       return next;
     });
 
     if (supabase) {
       setSaveStatus("SAVING");
-      void supabase.from(FAVORITES_TABLE).delete().eq("id", itemId);
+      void supabase.from(FAVORITES_TABLE).delete().eq("id", imageId);
 
-      if (removed?.kind === "image" && removed.storagePath) {
-        void supabase.storage.from(FAVORITES_BUCKET).remove([removed.storagePath]);
+      if (image?.storagePath) {
+        void supabase.storage.from(FAVORITES_BUCKET).remove([image.storagePath]);
       }
 
       setSaveStatus("SAVED");
     }
 
-    if (selectedItemId === itemId) setSelectedItemId(null);
+    if (selectedImageId === imageId) setSelectedImageId(null);
   }
 
   async function signIn(event: FormEvent<HTMLFormElement>) {
@@ -795,11 +693,11 @@ export default function Home() {
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
-    setSelectedItemId(null);
+    setSelectedImageId(null);
   }
 
   return (
-    <main className="page" data-theme={theme} onPointerDown={() => setSelectedItemId(null)}>
+    <main className="page" data-theme={theme} onPointerDown={() => setSelectedImageId(null)}>
       <time className="topTimestamp" dateTime={now?.toISOString()}>
         {now
           ? new Intl.DateTimeFormat("en", {
@@ -871,7 +769,7 @@ export default function Home() {
               }
               onClick={() => {
                 setActiveMonthIndex(index);
-                setSelectedItemId(null);
+                setSelectedImageId(null);
               }}
             >
               <span aria-hidden="true">{month.label}</span>
@@ -916,9 +814,9 @@ export default function Home() {
       >
         {categories.map((item, index) => {
           const isActive = index === activeIndex;
-          const paneKey = boardKey(item.id);
-          const boardItems = itemsByBoard[paneKey] ?? [];
-          const selectedItem = boardItems.find((entry) => entry.id === selectedItemId);
+          const imageKey = boardKey(item.id);
+          const boardImages = imagesByBoard[imageKey] ?? [];
+          const selectedImage = boardImages.find((image) => image.id === selectedImageId);
 
           return (
             <article
@@ -1028,28 +926,18 @@ export default function Home() {
                     </span>
                     {canEdit ? (
                       <span className="canvasActions">
-                        {selectedItem ? (
+                        {selectedImage ? (
                           <button
                             className="deleteSelectedButton"
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
-                              removeBoardItem(paneKey, selectedItem.id);
+                              removeImage(imageKey, selectedImage.id);
                             }}
                           >
                             DELETE SELECTED
                           </button>
                         ) : null}
-                        <button
-                          className="addTextButton"
-                          type="button"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            addCanvasText(item.id);
-                          }}
-                        >
-                          ADD TEXT
-                        </button>
                         <label className="addButton" onClick={(event) => event.stopPropagation()}>
                           <span aria-hidden="true">+</span>
                           <span className="srOnly">Add images to {item.label}</span>
@@ -1065,223 +953,106 @@ export default function Home() {
                       </span>
                     ) : null}
                   </span>
-                  <span className="imageCanvas" onPointerDown={() => setSelectedItemId(null)}>
-                    {boardItems.map((boardItem) =>
-                      boardItem.kind === "image" ? (
-                        <span
-                          key={boardItem.id}
-                          className="imageItem"
-                          data-selected={canEdit && selectedItemId === boardItem.id}
-                          style={
-                            {
-                              left: `${boardItem.x}%`,
-                              top: `${boardItem.y}%`,
-                              width: `${boardItem.width}%`,
-                              "--image-rotation": `${boardItem.rotation}deg`,
-                            } as CSSProperties
-                          }
-                          onPointerDown={(event) => startDrag(event, paneKey, boardItem.id)}
-                          onPointerMove={updateItemFromPointer}
-                          onPointerUp={stopDrag}
-                          onPointerCancel={stopDrag}
-                        >
-                          <img className="canvasImage" src={boardItem.src} alt="" draggable={false} />
-                          {theme === "bnw" ? (
-                            <HalftoneCmyk
-                              size={0.08}
-                              gridNoise={0.01}
-                              type="ink"
-                              softness={1}
-                              contrast={1}
-                              gainC={0.3}
-                              gainM={0}
-                              gainY={0.2}
-                              gainK={0}
-                              floodC={0.15}
-                              floodM={0}
-                              floodY={0}
-                              floodK={0}
-                              scale={1}
-                              image={boardItem.src}
-                              grainSize={0.5}
-                              fit="cover"
-                              colorBack="#00000000"
-                              colorC="#00B4FF"
-                              colorM="#FC519F"
-                              colorY="#FFD800"
-                              colorK="#231F20"
-                              className="imageShader"
-                              style={{ backgroundColor: "#FBFAF5", height: "100%", width: "100%" }}
-                            />
-                          ) : null}
-                          {canEdit ? (
-                            <>
-                              <span
-                                className="imageControls"
-                                onPointerDown={(event) => event.stopPropagation()}
-                              >
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Rotate left"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    rotateBoardItem(paneKey, boardItem.id, -15);
-                                  }}
-                                >
-                                  -15
-                                </button>
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Rotate right"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    rotateBoardItem(paneKey, boardItem.id, 15);
-                                  }}
-                                >
-                                  +15
-                                </button>
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Delete image"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    removeBoardItem(paneKey, boardItem.id);
-                                  }}
-                                >
-                                  x
-                                </button>
-                              </span>
-                              <span
-                                className="resizeHandle"
-                                aria-hidden="true"
-                                onPointerDown={(event) => startResize(event, paneKey, boardItem.id)}
-                                onPointerMove={updateItemFromPointer}
-                                onPointerUp={stopDrag}
-                                onPointerCancel={stopDrag}
-                              />
-                            </>
-                          ) : null}
-                        </span>
-                      ) : (
-                        <span
-                          key={boardItem.id}
-                          className="imageItem canvasTextItem"
-                          data-selected={canEdit && selectedItemId === boardItem.id}
-                          style={
-                            {
-                              left: `${boardItem.x}%`,
-                              top: `${boardItem.y}%`,
-                              width: `${boardItem.width}%`,
-                              "--image-rotation": `${boardItem.rotation}deg`,
-                            } as CSSProperties
-                          }
-                          onPointerDown={(event) => {
-                            if (
-                              event.target instanceof Element &&
-                              event.target.closest(".canvasTextInput")
-                            ) {
-                              return;
-                            }
-                            startDrag(event, paneKey, boardItem.id);
-                          }}
-                          onPointerMove={updateItemFromPointer}
-                          onPointerUp={stopDrag}
-                          onPointerCancel={stopDrag}
-                        >
-                          {!canEdit ? (
-                            <div className="canvasTextReadonly">
-                              {boardItem.body.trim()
-                                ? boardItem.body
-                                : "\u00a0"}
-                            </div>
-                          ) : selectedItemId === boardItem.id ? (
-                            <textarea
-                              className="canvasTextInput"
-                              aria-label="Canvas note"
-                              placeholder="Write something…"
-                              value={boardItem.body}
-                              onChange={(event) =>
-                                updateTextItemBody(paneKey, boardItem.id, event.target.value)
-                              }
+                  <span className="imageCanvas" onPointerDown={() => setSelectedImageId(null)}>
+                    {boardImages.map((image) => (
+                      <span
+                        key={image.id}
+                        className="imageItem"
+                        data-selected={canEdit && selectedImageId === image.id}
+                        style={
+                          {
+                            left: `${image.x}%`,
+                            top: `${image.y}%`,
+                            width: `${image.width}%`,
+                            "--image-rotation": `${image.rotation}deg`,
+                          } as CSSProperties
+                        }
+                        onPointerDown={(event) => startDrag(event, imageKey, image.id)}
+                        onPointerMove={updateImageFromPointer}
+                        onPointerUp={stopDrag}
+                        onPointerCancel={stopDrag}
+                      >
+                        <img className="canvasImage" src={image.src} alt="" draggable={false} />
+                        {theme === "bnw" ? (
+                          <HalftoneCmyk
+                            size={0.08}
+                            gridNoise={0.01}
+                            type="ink"
+                            softness={1}
+                            contrast={1}
+                            gainC={0.3}
+                            gainM={0}
+                            gainY={0.2}
+                            gainK={0}
+                            floodC={0.15}
+                            floodM={0}
+                            floodY={0}
+                            floodK={0}
+                            scale={1}
+                            image={image.src}
+                            grainSize={0.5}
+                            fit="cover"
+                            colorBack="#00000000"
+                            colorC="#00B4FF"
+                            colorM="#FC519F"
+                            colorY="#FFD800"
+                            colorK="#231F20"
+                            className="imageShader"
+                            style={{ backgroundColor: "#FBFAF5", height: "100%", width: "100%" }}
+                          />
+                        ) : null}
+                        {canEdit ? (
+                          <>
+                            <span
+                              className="imageControls"
                               onPointerDown={(event) => event.stopPropagation()}
-                              onBlur={() => {
-                                const categoryId = categoryIdFromBoardKey(paneKey);
-                                const refreshed = itemsByBoardRef.current[paneKey]?.find(
-                                  (entry) => entry.id === boardItem.id && entry.kind === "text",
-                                );
-                                if (refreshed && refreshed.kind === "text" && categoryId) {
-                                  void saveBoardItemRecord(paneKey, categoryId, refreshed);
-                                }
-                              }}
-                            />
-                          ) : (
-                            <button
-                              type="button"
-                              className="canvasTextReadonly canvasTextTapToEdit"
-                              onPointerDown={(event) => {
-                                event.stopPropagation();
-                                setSelectedItemId(boardItem.id);
-                              }}
                             >
-                              {boardItem.body.trim() ? boardItem.body : "Tap to write"}
-                            </button>
-                          )}
-                          {canEdit ? (
-                            <>
-                              <span
-                                className="imageControls"
-                                onPointerDown={(event) => event.stopPropagation()}
+                              <button
+                                className="imageControl"
+                                type="button"
+                                aria-label="Rotate left"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  rotateImage(imageKey, image.id, -15);
+                                }}
                               >
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Rotate left"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    rotateBoardItem(paneKey, boardItem.id, -15);
-                                  }}
-                                >
-                                  -15
-                                </button>
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Rotate right"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    rotateBoardItem(paneKey, boardItem.id, 15);
-                                  }}
-                                >
-                                  +15
-                                </button>
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Delete text"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    removeBoardItem(paneKey, boardItem.id);
-                                  }}
-                                >
-                                  x
-                                </button>
-                              </span>
-                              <span
-                                className="resizeHandle"
-                                aria-hidden="true"
-                                onPointerDown={(event) => startResize(event, paneKey, boardItem.id)}
-                                onPointerMove={updateItemFromPointer}
-                                onPointerUp={stopDrag}
-                                onPointerCancel={stopDrag}
-                              />
-                            </>
-                          ) : null}
-                        </span>
-                      ),
-                    )}
+                                -15
+                              </button>
+                              <button
+                                className="imageControl"
+                                type="button"
+                                aria-label="Rotate right"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  rotateImage(imageKey, image.id, 15);
+                                }}
+                              >
+                                +15
+                              </button>
+                              <button
+                                className="imageControl"
+                                type="button"
+                                aria-label="Delete image"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  removeImage(imageKey, image.id);
+                                }}
+                              >
+                                x
+                              </button>
+                            </span>
+                            <span
+                              className="resizeHandle"
+                              aria-hidden="true"
+                              onPointerDown={(event) => startResize(event, imageKey, image.id)}
+                              onPointerMove={updateImageFromPointer}
+                              onPointerUp={stopDrag}
+                              onPointerCancel={stopDrag}
+                            />
+                          </>
+                        ) : null}
+                      </span>
+                    ))}
                   </span>
                 </span>
               </span>
