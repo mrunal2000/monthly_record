@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@paper-design/shaders-react": "^0.0.76",
     "@supabase/supabase-js": "^2.105.3",
     "next": "latest",
     "react": "latest",

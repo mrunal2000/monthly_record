@@ -1,5 +1,6 @@
 "use client";
 
+import { HalftoneCmyk } from "@paper-design/shaders-react";
 import type { CSSProperties, ChangeEvent, FormEvent, PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -44,6 +45,15 @@ type DragState = {
   offsetY: number;
 };
 
+type ThemeName = "gallery" | "ink" | "bnw";
+type OpenDirection = "ltr" | "rtl";
+
+const themes: { id: ThemeName; label: string }[] = [
+  { id: "gallery", label: "GALLERY" },
+  { id: "ink", label: "INK" },
+  { id: "bnw", label: "BNW" },
+];
+
 const months = [
   { id: "jan", label: "JAN" },
   { id: "feb", label: "FEB" },
@@ -62,32 +72,32 @@ const months = [
 const items: Item[] = [
   {
     label: "MEDIA",
-    color: "#4C54CC",
-    textColor: "#FFFFFF",
+    color: "var(--category-media)",
+    textColor: "var(--category-on-dark)",
     note: "Add stills, posters, scenes, and anything from what you watched.",
   },
   {
     label: "BOOKS",
-    color: "#D55192",
-    textColor: "#FFFFFF",
+    color: "var(--category-books)",
+    textColor: "var(--category-on-dark)",
     note: "Add covers, spreads, quotes, and references you want to arrange.",
   },
   {
     label: "MISC",
-    color: "#6E3C8A",
-    textColor: "#FFFFFF",
+    color: "var(--category-misc)",
+    textColor: "var(--category-on-dark)",
     note: "Add anything that does not fit neatly anywhere else.",
   },
   {
     label: "WISHLIST",
-    color: "#7B85BA",
-    textColor: "#07101F",
+    color: "var(--category-wishlist)",
+    textColor: "var(--category-on-light)",
     note: "Add things you want, are considering, or want to remember.",
   },
   {
     label: "FOOD",
-    color: "#2F7D4C",
-    textColor: "#FFFFFF",
+    color: "var(--category-food)",
+    textColor: "var(--category-on-dark)",
     note: "Add meals, places, recipes, cravings, and favorite bites.",
   },
 ];
@@ -100,10 +110,25 @@ function getCurrentMonthIndex() {
   return new Date().getMonth();
 }
 
+function getActiveFrameWidthToken() {
+  const collapsedFrames = items.length - 1;
+  const collapsedWidth = Array.from(
+    { length: collapsedFrames },
+    () => "var(--collapsed-width)",
+  ).join(" - ");
+  const collapsedGaps = Array.from(
+    { length: collapsedFrames },
+    () => "var(--accordion-gap)",
+  ).join(" - ");
+
+  return `calc(100% - ${collapsedWidth} - ${collapsedGaps})`;
+}
+
 export default function Home() {
   const currentMonthIndex = getCurrentMonthIndex();
   const [activeMonthIndex, setActiveMonthIndex] = useState(currentMonthIndex);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [openDirection, setOpenDirection] = useState<OpenDirection>("ltr");
   const [imagesByBoard, setImagesByBoard] = useState<Record<string, CanvasImage[]>>({});
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [now, setNow] = useState<Date | null>(null);
@@ -112,6 +137,7 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [editMode, setEditMode] = useState(false);
+  const [theme, setTheme] = useState<ThemeName>("gallery");
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const dragRef = useRef<DragState | null>(null);
   const activeMonth = months[activeMonthIndex];
@@ -120,10 +146,28 @@ export default function Home() {
   useEffect(() => {
     setNow(new Date());
     setEditMode(new URLSearchParams(window.location.search).get("edit") === "1");
+    const storedTheme = window.localStorage.getItem("monthly-record-theme") as ThemeName | null;
+    if (storedTheme && themes.some((themeOption) => themeOption.id === storedTheme)) {
+      setTheme(storedTheme);
+    }
     const interval = window.setInterval(() => setNow(new Date()), 1000);
 
     return () => window.clearInterval(interval);
   }, []);
+
+  function updateTheme(nextTheme: ThemeName) {
+    setTheme(nextTheme);
+    window.localStorage.setItem("monthly-record-theme", nextTheme);
+  }
+
+  function openFrame(index: number) {
+    if (index !== activeIndex) {
+      setOpenDirection(index > activeIndex ? "ltr" : "rtl");
+    }
+
+    setActiveIndex(index);
+    setSelectedImageId(null);
+  }
 
   useEffect(() => {
     imagesByBoardRef.current = imagesByBoard;
@@ -513,7 +557,7 @@ export default function Home() {
   }
 
   return (
-    <main className="page">
+    <main className="page" data-theme={theme} onPointerDown={() => setSelectedImageId(null)}>
       <time className="topTimestamp" dateTime={now?.toISOString()}>
         {now
           ? new Intl.DateTimeFormat("en", {
@@ -552,6 +596,20 @@ export default function Home() {
           )}
         </form>
       ) : null}
+      <label className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
+        <span className="srOnly">Theme</span>
+        <select
+          className="themeSelect"
+          value={theme}
+          onChange={(event) => updateTheme(event.target.value as ThemeName)}
+        >
+          {themes.map((themeOption) => (
+            <option key={themeOption.id} value={themeOption.id}>
+              {themeOption.label}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <nav className="monthRail" aria-label="Monthly favorite boards">
         {months.map((month, index) => (
@@ -575,6 +633,7 @@ export default function Home() {
         key={activeMonth.id}
         className="accordion"
         aria-label={`${activeMonth.label} favorite category cards`}
+        style={{ "--active-frame-width": getActiveFrameWidthToken() } as CSSProperties}
       >
         {items.map((item, index) => {
           const isActive = index === activeIndex;
@@ -587,6 +646,7 @@ export default function Home() {
               key={item.label}
               className="frame"
               data-active={isActive}
+              data-direction={isActive ? openDirection : undefined}
               style={
                 {
                   "--frame-color": item.color,
@@ -596,11 +656,11 @@ export default function Home() {
               role="button"
               tabIndex={0}
               aria-selected={isActive}
-              onClick={() => setActiveIndex(index)}
+              onClick={() => openFrame(index)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" || event.key === " ") {
                   event.preventDefault();
-                  setActiveIndex(index);
+                  openFrame(index);
                 }
               }}
             >
@@ -643,7 +703,7 @@ export default function Home() {
                       </span>
                     ) : null}
                   </span>
-                  <span className="imageCanvas">
+                  <span className="imageCanvas" onPointerDown={() => setSelectedImageId(null)}>
                     {boardImages.map((image) => (
                       <span
                         key={image.id}
@@ -663,6 +723,34 @@ export default function Home() {
                         onPointerCancel={stopDrag}
                       >
                         <img className="canvasImage" src={image.src} alt="" draggable={false} />
+                        {theme === "bnw" ? (
+                          <HalftoneCmyk
+                            size={0.06}
+                            gridNoise={0.04}
+                            type="ink"
+                            softness={0.35}
+                            contrast={0.9}
+                            gainC={0.22}
+                            gainM={0.16}
+                            gainY={0.18}
+                            gainK={0.12}
+                            floodC={0}
+                            floodM={0}
+                            floodY={0}
+                            floodK={0}
+                            scale={1}
+                            image={image.src}
+                            grainSize={0.14}
+                            fit="cover"
+                            colorBack="#00000000"
+                            colorC="#00B4FF"
+                            colorM="#FC519F"
+                            colorY="#FFD800"
+                            colorK="#231F20"
+                            className="imageShader"
+                            style={{ backgroundColor: "#FFFFFF", height: "100%", width: "100%" }}
+                          />
+                        ) : null}
                         {canEdit ? (
                           <>
                             <span className="imageControls" onPointerDown={(event) => event.stopPropagation()}>

@@ -1,15 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Sometype+Mono:wght@400;500;600;700&display=swap");
+@import "./tokens.css";
 
 :root {
-  color-scheme: light;
-  --bg: #ffffff;
-  --ink: #000000;
-  --muted: #707070;
-  --collapsed-width: clamp(12px, 2vw, 16px);
-  --accordion-gap: clamp(8px, 1.6vw, 10px);
-  --top-frame-height: clamp(22px, 3vw, 32px);
-  --month-rail-width: clamp(54px, 7vw, 76px);
-  --frame-border-width: 1px;
+  --bg: var(--color-bg);
+  --ink: var(--color-ink);
+  --muted: var(--color-muted);
+  --collapsed-width: var(--size-collapsed-frame);
+  --accordion-gap: var(--space-accordion-gap);
+  --top-frame-height: var(--size-top-frame);
+  --month-rail-width: var(--size-month-rail);
+  --frame-border-width: var(--border-frame);
 }
 
 * {
@@ -26,6 +26,9 @@ body {
   background: var(--bg);
   color: var(--ink);
   font-family: "Sometype Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  transition:
+    background-color 180ms ease,
+    color 180ms ease;
 }
 
 .page {
@@ -127,6 +130,29 @@ body {
   white-space: nowrap;
 }
 
+.themePicker {
+  position: absolute;
+  top: 0;
+  left: clamp(14px, 2vw, 24px);
+  z-index: 3;
+  height: var(--top-frame-height);
+  display: flex;
+  align-items: center;
+}
+
+.themeSelect {
+  height: 20px;
+  border: 1px solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
 .monthRail {
   position: absolute;
   top: var(--top-frame-height);
@@ -224,11 +250,11 @@ body {
   cursor: pointer;
   font: inherit;
   text-align: left;
-  transition: flex-basis 280ms cubic-bezier(0.645, 0.045, 0.355, 1);
+  transition: flex-basis var(--motion-panel-duration) var(--motion-panel-ease);
 }
 
 .frame[data-active="true"] {
-  flex: 1 1 auto;
+  flex: 0 0 var(--active-frame-width);
 }
 
 .frame:focus-visible {
@@ -247,6 +273,41 @@ body {
   transition: background-color 180ms ease;
 }
 
+.frame[data-active="true"] .frameRect {
+  animation-duration: var(--motion-panel-duration);
+  animation-fill-mode: both;
+  animation-timing-function: var(--motion-panel-ease);
+  will-change: clip-path;
+}
+
+.frame[data-active="true"][data-direction="ltr"] .frameRect {
+  animation-name: revealFrameFromLeft;
+}
+
+.frame[data-active="true"][data-direction="rtl"] .frameRect {
+  animation-name: revealFrameFromRight;
+}
+
+@keyframes revealFrameFromLeft {
+  from {
+    clip-path: inset(0 calc(100% - var(--collapsed-width)) 0 0);
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes revealFrameFromRight {
+  from {
+    clip-path: inset(0 0 0 calc(100% - var(--collapsed-width)));
+  }
+
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
 .frameContent {
   position: absolute;
   inset: clamp(16px, 3vw, 28px);
@@ -257,17 +318,11 @@ body {
   gap: clamp(10px, 2vw, 18px);
   color: var(--frame-text-color);
   opacity: 0;
-  transform: translateY(8px);
-  transition:
-    opacity 180ms ease,
-    transform 220ms cubic-bezier(0.215, 0.61, 0.355, 1);
   pointer-events: none;
 }
 
 .frame[data-active="true"] .frameContent {
   opacity: 1;
-  transform: translateY(0);
-  transition-delay: 120ms;
   pointer-events: auto;
 }
 
@@ -387,6 +442,14 @@ body {
   display: block;
   width: 100%;
   height: auto;
+  border: 1px solid currentColor;
+  pointer-events: none;
+}
+
+.imageShader {
+  position: absolute !important;
+  inset: 0;
+  display: block;
   border: 1px solid currentColor;
   pointer-events: none;
 }
