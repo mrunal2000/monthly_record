@@ -817,6 +817,7 @@ export default function Home() {
           const isActive = index === activeIndex;
           const imageKey = boardKey(item.id);
           const boardImages = imagesByBoard[imageKey] ?? [];
+          const imageCount = boardImages.length;
           const selectedImage = boardImages.find((image) => image.id === selectedImageId);
 
           return (
@@ -842,7 +843,7 @@ export default function Home() {
                 }
               }}
             >
-              <span className="frameLabel">{item.label}</span>
+              <span className="frameLabel">{`${item.label}[${imageCount}]`}</span>
               <span className="frameRect">
                 <span className="frameContent" aria-hidden={!isActive}>
                   <span className="canvasHeader">
