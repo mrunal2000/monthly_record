@@ -1,35 +1,14 @@
-:root,
-[data-theme="gallery"] {
-  color-scheme: light;
+/*
+  Three skins: shared geometry lives on :root; each theme swaps palette, typography, and motion feel.
+  Theme is driven by html[data-theme] (set from the client).
+ */
 
-  --primitive-white: #fbfaf5;
-  --primitive-black: #111111;
-  --primitive-gray-500: #6e6a62;
-  --primitive-blue-600: #1847d5;
-  --primitive-pink-500: #d6005f;
-  --primitive-purple-700: #5a2b8c;
-  --primitive-periwinkle-500: #d7dbe8;
-  --primitive-green-700: #17633f;
-
-  --color-bg: var(--primitive-white);
-  --color-ink: var(--primitive-black);
-  --color-muted: var(--primitive-gray-500);
-  --color-surface: var(--primitive-white);
-
-  --category-media: var(--primitive-blue-600);
-  --category-books: var(--primitive-pink-500);
-  --category-misc: var(--primitive-purple-700);
-  --category-wishlist: var(--primitive-periwinkle-500);
-  --category-food: var(--primitive-green-700);
-  --category-on-dark: var(--primitive-white);
-  --category-on-light: #111111;
-
+:root {
   --size-collapsed-frame: clamp(12px, 2vw, 16px);
   --space-accordion-gap: clamp(8px, 1.6vw, 10px);
   --size-top-frame: clamp(22px, 3vw, 32px);
   --size-month-rail: clamp(54px, 7vw, 76px);
   --border-frame: 1px;
-
   --motion-panel-duration: 520ms;
   --motion-panel-ease: cubic-bezier(0.77, 0, 0.175, 1);
   --motion-content-duration: 320ms;
@@ -37,36 +16,96 @@
   --motion-content-ease: cubic-bezier(0.215, 0.61, 0.355, 1);
 }
 
-[data-theme="ink"] {
-  color-scheme: dark;
-
-  --color-bg: #080808;
-  --color-ink: #f4f1ea;
-  --color-muted: #9a958c;
-  --color-surface: #111111;
-
-  --category-media: #7f8cff;
-  --category-books: #ff6fb2;
-  --category-misc: #b17ae5;
-  --category-wishlist: #a9b6ff;
-  --category-food: #62c987;
-  --category-on-dark: #080808;
-  --category-on-light: #080808;
-}
-
-[data-theme="bnw"] {
+/* --- PAPER: newsroom / broadsheet -------------------------------------- */
+html[data-theme="paper"] {
   color-scheme: light;
 
+  --font-body: "Newsreader", Georgia, "Times New Roman", serif;
+  --font-chrome: "Oswald", "Arial Narrow", "Helvetica Neue", system-ui, sans-serif;
+
+  --color-bg: #e4dfd3;
+  --color-ink: #0f0f0f;
+  --color-muted: #4a463d;
+  --color-surface: #faf7ef;
+
+  /* Lithograph ink tints — still distinct in print stacks */
+  --category-media: #8b2635;
+  --category-books: #34495e;
+  --category-misc: #5c4a38;
+  --category-wishlist: #746c5e;
+  --category-food: #2d4739;
+  --category-on-dark: #faf7ef;
+  --category-on-light: #121212;
+
+  --size-collapsed-frame: clamp(14px, 2.2vw, 18px);
+  --space-accordion-gap: clamp(11px, 2vw, 14px);
+  --size-month-rail: clamp(52px, 6.8vw, 74px);
+  --border-frame: 1px;
+  --motion-panel-duration: 470ms;
+  --motion-panel-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --font-frame-display:
+    "OPTI Engravers Old English",
+    "Newsreader",
+    Georgia,
+    "Times New Roman",
+    serif;
+}
+
+/* --- INK: white field + vivid proofs (mono, IBM Plex) ------------------- */
+html[data-theme="ink"] {
+  color-scheme: light;
+
+  --font-body: "IBM Plex Mono", "Sometype Mono", ui-monospace, monospace;
+  --font-chrome: "IBM Plex Mono", "Sometype Mono", ui-monospace, monospace;
+
   --color-bg: #ffffff;
-  --color-ink: #000000;
-  --color-muted: #5f5f5f;
-  --color-surface: #f7f7f7;
+  --color-ink: #121212;
+  --color-muted: #606060;
+  --color-surface: #f4f4f4;
+
+  --category-media: #6d8bff;
+  --category-books: #ff7eb3;
+  --category-misc: #d4a3ff;
+  --category-wishlist: #7ee8d3;
+  --category-food: #9be06c;
+  --category-on-dark: #070808;
+  --category-on-light: #070808;
+
+  --space-accordion-gap: clamp(7px, 1.35vw, 9px);
+  --motion-panel-duration: 620ms;
+  --motion-panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Sans masthead vs mono chrome/body */
+  --font-frame-display:
+    "IBM Plex Sans",
+    "Helvetica Neue",
+    system-ui,
+    sans-serif;
+}
+
+/* --- BNW: print proof / harsh contrast / halftone companion ------------ */
+html[data-theme="bnw"] {
+  color-scheme: light;
+
+  --font-body: "Sometype Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-chrome: "Sometype Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-bg: #f4f4f4;
+  --color-ink: #0a0a0a;
+  --color-muted: #5a5a5a;
+  --color-surface: #ffffff;
 
   --category-media: #111111;
-  --category-books: #2a2a2a;
-  --category-misc: #444444;
-  --category-wishlist: #d8d8d8;
-  --category-food: #6a6a6a;
-  --category-on-dark: #ffffff;
-  --category-on-light: #000000;
+  --category-books: #2c2c2c;
+  --category-misc: #474747;
+  --category-wishlist: #c8c8c8;
+  --category-food: #666666;
+  --category-on-dark: #fafafa;
+  --category-on-light: #060606;
+
+  --motion-panel-duration: 480ms;
+  --motion-panel-ease: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --font-frame-display: "Sometype Mono", ui-monospace, SFMono-Regular, monospace;
 }

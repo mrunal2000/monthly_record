@@ -86,11 +86,11 @@ type DragState = {
   offsetY: number;
 };
 
-type ThemeName = "gallery" | "ink" | "bnw";
+type ThemeName = "paper" | "ink" | "bnw";
 type OpenDirection = "ltr" | "rtl";
 
 const themes: { id: ThemeName; label: string }[] = [
-  { id: "gallery", label: "GALLERY" },
+  { id: "paper", label: "PAPER" },
   { id: "ink", label: "INK" },
   { id: "bnw", label: "BNW" },
 ];
@@ -169,7 +169,7 @@ export default function Home() {
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [editMode, setEditMode] = useState(false);
-  const [theme, setTheme] = useState<ThemeName>("gallery");
+  const [theme, setTheme] = useState<ThemeName>("paper");
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
   const [newFrameName, setNewFrameName] = useState("");
@@ -183,9 +183,13 @@ export default function Home() {
   useEffect(() => {
     setNow(new Date());
     setEditMode(new URLSearchParams(window.location.search).get("edit") === "1");
-    const storedTheme = window.localStorage.getItem("monthly-record-theme") as ThemeName | null;
+    let storedTheme = window.localStorage.getItem("monthly-record-theme") as ThemeName | (string & {}) | null;
+    if (storedTheme === "gallery") {
+      storedTheme = "paper";
+      window.localStorage.setItem("monthly-record-theme", "paper");
+    }
     if (storedTheme && themes.some((themeOption) => themeOption.id === storedTheme)) {
-      setTheme(storedTheme);
+      setTheme(storedTheme as ThemeName);
     }
     const interval = window.setInterval(() => setNow(new Date()), 1000);
 
@@ -195,7 +199,12 @@ export default function Home() {
   function updateTheme(nextTheme: ThemeName) {
     setTheme(nextTheme);
     window.localStorage.setItem("monthly-record-theme", nextTheme);
+    document.documentElement.setAttribute("data-theme", nextTheme);
   }
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   function openFrame(index: number) {
     if (index !== activeIndex) {
@@ -697,7 +706,7 @@ export default function Home() {
   }
 
   return (
-    <main className="page" data-theme={theme} onPointerDown={() => setSelectedImageId(null)}>
+    <main className="page" onPointerDown={() => setSelectedImageId(null)}>
       <time className="topTimestamp" dateTime={now?.toISOString()}>
         {now
           ? new Intl.DateTimeFormat("en", {
