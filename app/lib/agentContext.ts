@@ -69,7 +69,7 @@ export function buildAgentFavoritesContext(
     "Monthly favorites board · Each item is usually a cover/still/screenshot linked by URL.",
     "The assistant may receive the SAME images again as visuals (not only URLs) — read cover typography and artwork where possible.",
     "Some slots may store HEIC/HEIF URLs (iPhone originals); vision uses JPEG/PNG/WebP/GIF only — those URLs still appear below for reference.\n",
-    "When suggesting books or media: connect to BOOKS · MEDIA · WISHLIST; say when titles are unclear or guesses.\n",
+    "When answering 'what next?' or similar: suggest new books/media they don't already appear to have listed; don't only restate their board.\n",
   );
 
   for (const month of months) {
