@@ -73,6 +73,21 @@ body {
   text-transform: uppercase;
 }
 
+.saveStatus {
+  position: absolute;
+  top: 0;
+  left: calc(var(--month-rail-width) + clamp(12px, 2vw, 24px));
+  z-index: 2;
+  height: var(--top-frame-height);
+  display: flex;
+  align-items: center;
+  color: var(--ink);
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
 .monthRail {
   position: absolute;
   top: var(--top-frame-height);

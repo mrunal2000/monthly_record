@@ -2,6 +2,7 @@
 
 import type { CSSProperties, ChangeEvent, PointerEvent } from "react";
 import { useEffect, useRef, useState } from "react";
+import { FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
 
 type Item = {
   label: string;
@@ -13,6 +14,21 @@ type Item = {
 type CanvasImage = {
   id: string;
   src: string;
+  storagePath?: string;
+  x: number;
+  y: number;
+  width: number;
+  rotation: number;
+};
+
+type FavoriteItemRow = {
+  id: string;
+  board_key: string;
+  month_id: string;
+  category_index: number;
+  category_label: string;
+  image_url: string;
+  storage_path: string;
   x: number;
   y: number;
   width: number;
@@ -90,6 +106,8 @@ export default function Home() {
   const [imagesByBoard, setImagesByBoard] = useState<Record<string, CanvasImage[]>>({});
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const [now, setNow] = useState<Date | null>(null);
+  const [saveStatus, setSaveStatus] = useState(supabase ? "SUPABASE CONNECTED" : "LOCAL ONLY");
+  const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const dragRef = useRef<DragState | null>(null);
   const activeMonth = months[activeMonthIndex];
 
@@ -100,31 +118,169 @@ export default function Home() {
     return () => window.clearInterval(interval);
   }, []);
 
+  useEffect(() => {
+    imagesByBoardRef.current = imagesByBoard;
+  }, [imagesByBoard]);
+
+  useEffect(() => {
+    async function loadFavorites() {
+      if (!supabase) {
+        setSaveStatus("LOCAL ONLY");
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from(FAVORITES_TABLE)
+        .select("id, board_key, month_id, category_index, category_label, image_url, storage_path, x, y, width, rotation")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Could not load Supabase favorites:", error.message);
+        setSaveStatus("LOAD ERROR");
+        return;
+      }
+
+      const grouped = (data as FavoriteItemRow[]).reduce<Record<string, CanvasImage[]>>(
+        (boards, row) => {
+          boards[row.board_key] = [
+            ...(boards[row.board_key] ?? []),
+            {
+              id: row.id,
+              src: row.image_url,
+              storagePath: row.storage_path,
+              x: row.x,
+              y: row.y,
+              width: row.width,
+              rotation: row.rotation,
+            },
+          ];
+
+          return boards;
+        },
+        {},
+      );
+
+      imagesByBoardRef.current = grouped;
+      setImagesByBoard(grouped);
+      setSaveStatus("SUPABASE CONNECTED");
+    }
+
+    void loadFavorites();
+  }, []);
+
   function boardKey(categoryIndex: number, monthIndex = activeMonthIndex) {
     return `${months[monthIndex].id}-${categoryIndex}`;
   }
 
-  function addImages(event: ChangeEvent<HTMLInputElement>, categoryIndex: number) {
+  function categoryIndexFromBoardKey(imageKey: string) {
+    return Number(imageKey.split("-").at(-1));
+  }
+
+  function safeFileName(fileName: string) {
+    return fileName.replace(/[^a-z0-9.-]/gi, "-").toLowerCase();
+  }
+
+  async function uploadImageFile(file: File, imageKey: string) {
+    if (!supabase) {
+      return {
+        src: URL.createObjectURL(file),
+        storagePath: undefined,
+      };
+    }
+
+    const storagePath = `${imageKey}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
+    const { error } = await supabase.storage.from(FAVORITES_BUCKET).upload(storagePath, file);
+
+    if (error) throw error;
+
+    const { data } = supabase.storage.from(FAVORITES_BUCKET).getPublicUrl(storagePath);
+
+    return {
+      src: data.publicUrl,
+      storagePath,
+    };
+  }
+
+  async function saveImageRecord(
+    imageKey: string,
+    categoryIndex: number,
+    image: CanvasImage,
+  ) {
+    if (!supabase || !image.storagePath) {
+      setSaveStatus("LOCAL ONLY");
+      return;
+    }
+
+    setSaveStatus("SAVING");
+    const monthId = imageKey.split("-")[0];
+    const { error } = await supabase.from(FAVORITES_TABLE).upsert({
+      id: image.id,
+      board_key: imageKey,
+      month_id: monthId,
+      category_index: categoryIndex,
+      category_label: items[categoryIndex].label,
+      image_url: image.src,
+      storage_path: image.storagePath,
+      x: image.x,
+      y: image.y,
+      width: image.width,
+      rotation: image.rotation,
+      updated_at: new Date().toISOString(),
+    });
+
+    if (error) {
+      console.error("Could not save favorite item:", error.message);
+      setSaveStatus("SAVE ERROR");
+      return;
+    }
+
+    setSaveStatus("SAVED");
+  }
+
+  async function addImages(event: ChangeEvent<HTMLInputElement>, categoryIndex: number) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
     const imageKey = boardKey(categoryIndex);
 
-    setImagesByBoard((current) => {
-      const existing = current[imageKey] ?? [];
-      const nextImages = files.map((file, fileIndex) => ({
-        id: `${imageKey}-${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
-        src: URL.createObjectURL(file),
-        x: 12 + ((existing.length + fileIndex) % 4) * 9,
-        y: 28 + ((existing.length + fileIndex) % 3) * 10,
-        width: 30,
-        rotation: 0,
-      }));
+    try {
+      setSaveStatus(supabase ? "SAVING" : "LOCAL ONLY");
+      const existing = imagesByBoardRef.current[imageKey] ?? [];
+      const nextImages = await Promise.all(
+        files.map(async (file, fileIndex) => {
+          const uploaded = await uploadImageFile(file, imageKey);
 
-      return {
-        ...current,
-        [imageKey]: [...existing, ...nextImages],
-      };
-    });
+          return {
+            id: crypto.randomUUID(),
+            src: uploaded.src,
+            storagePath: uploaded.storagePath,
+            x: 12 + ((existing.length + fileIndex) % 4) * 9,
+            y: 28 + ((existing.length + fileIndex) % 3) * 10,
+            width: 30,
+            rotation: 0,
+          };
+        }),
+      );
+
+      setImagesByBoard((current) => {
+        const next = {
+          ...current,
+          [imageKey]: [...(current[imageKey] ?? []), ...nextImages],
+        };
+        imagesByBoardRef.current = next;
+
+        return next;
+      });
+
+      await Promise.all(
+        nextImages.map((image) => saveImageRecord(imageKey, categoryIndex, image)),
+      );
+    } catch (error) {
+      console.error(
+        "Could not upload image:",
+        error instanceof Error ? error.message : String(error),
+      );
+      setSaveStatus("SAVE ERROR");
+    }
 
     event.target.value = "";
   }
@@ -173,14 +329,19 @@ export default function Home() {
     const canvasRect = canvas.getBoundingClientRect();
     const itemRect = drag.mode === "move" ? event.currentTarget.getBoundingClientRect() : null;
 
-    setImagesByBoard((current) => ({
-      ...current,
-      [drag.imageKey]: (current[drag.imageKey] ?? []).map((image) =>
-        image.id === drag.imageId
-          ? getUpdatedImage(image, event, canvasRect, drag, itemRect)
-          : image,
-      ),
-    }));
+    setImagesByBoard((current) => {
+      const next = {
+        ...current,
+        [drag.imageKey]: (current[drag.imageKey] ?? []).map((image) =>
+          image.id === drag.imageId
+            ? getUpdatedImage(image, event, canvasRect, drag, itemRect)
+            : image,
+        ),
+      };
+      imagesByBoardRef.current = next;
+
+      return next;
+    });
   }
 
   function getUpdatedImage(
@@ -208,23 +369,72 @@ export default function Home() {
 
   function stopDrag(event: PointerEvent<HTMLElement>) {
     event.stopPropagation();
+    const drag = dragRef.current;
+
+    if (drag) {
+      const image = imagesByBoardRef.current[drag.imageKey]?.find(
+        (currentImage) => currentImage.id === drag.imageId,
+      );
+      const categoryIndex = categoryIndexFromBoardKey(drag.imageKey);
+
+      if (image && Number.isFinite(categoryIndex)) {
+        void saveImageRecord(drag.imageKey, categoryIndex, image);
+      }
+    }
+
     dragRef.current = null;
   }
 
   function rotateImage(imageKey: string, imageId: string, amount: number) {
-    setImagesByBoard((current) => ({
-      ...current,
-      [imageKey]: (current[imageKey] ?? []).map((image) =>
-        image.id === imageId ? { ...image, rotation: image.rotation + amount } : image,
-      ),
-    }));
+    const categoryIndex = categoryIndexFromBoardKey(imageKey);
+    const image = imagesByBoardRef.current[imageKey]?.find(
+      (currentImage) => currentImage.id === imageId,
+    );
+    const updatedImage = image ? { ...image, rotation: image.rotation + amount } : null;
+
+    setImagesByBoard((current) => {
+      const next = {
+        ...current,
+        [imageKey]: (current[imageKey] ?? []).map((image) =>
+          image.id === imageId ? { ...image, rotation: image.rotation + amount } : image,
+        ),
+      };
+      imagesByBoardRef.current = next;
+
+      return next;
+    });
+
+    if (updatedImage && Number.isFinite(categoryIndex)) {
+      void saveImageRecord(imageKey, categoryIndex, updatedImage);
+    }
   }
 
   function removeImage(imageKey: string, imageId: string) {
-    setImagesByBoard((current) => ({
-      ...current,
-      [imageKey]: (current[imageKey] ?? []).filter((image) => image.id !== imageId),
-    }));
+    const image = imagesByBoardRef.current[imageKey]?.find(
+      (currentImage) => currentImage.id === imageId,
+    );
+
+    setImagesByBoard((current) => {
+      const next = {
+        ...current,
+        [imageKey]: (current[imageKey] ?? []).filter((image) => image.id !== imageId),
+      };
+      imagesByBoardRef.current = next;
+
+      return next;
+    });
+
+    if (supabase) {
+      setSaveStatus("SAVING");
+      void supabase.from(FAVORITES_TABLE).delete().eq("id", imageId);
+
+      if (image?.storagePath) {
+        void supabase.storage.from(FAVORITES_BUCKET).remove([image.storagePath]);
+      }
+
+      setSaveStatus("SAVED");
+    }
+
     if (selectedImageId === imageId) setSelectedImageId(null);
   }
 
@@ -242,6 +452,7 @@ export default function Home() {
             }).format(now)
           : ""}
       </time>
+      <span className="saveStatus">{saveStatus}</span>
 
       <nav className="monthRail" aria-label="Monthly favorite boards">
         {months.map((month, index) => (
