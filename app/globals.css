@@ -1274,22 +1274,28 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
 
 @media (max-width: 767px) {
   .page {
+    /* Matches .mobileAppChrome: top band + month row (minimal theme pads rail taller than token). */
+    --mobile-chrome-under-safe-area: calc(
+      var(--top-frame-height) + max(var(--mobile-month-rail-band), 58px) +
+        calc(2 * var(--frame-border-width))
+    );
     --accordion-mobile-slot-height: calc(
       100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) -
-        var(--top-frame-height) - var(--mobile-month-rail-band) - 52px -
+        var(--mobile-chrome-under-safe-area) - var(--mobile-content-below-chrome-gap) - 16px -
         var(--mobile-frame-extra)
     );
     --mobile-frame-extra: 0px;
-    display: grid;
-    place-items: start center;
-    align-content: start;
+    /* Block flow: grid + out-of-flow chrome/FAB left only in-flow items, so the accordion
+       was placed in row 1 and ignored visual top padding (content sat under fixed nav). */
+    display: block;
+    box-sizing: border-box;
     min-height: 100dvh;
     overflow-x: hidden;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
     padding-top: calc(
-      env(safe-area-inset-top, 0px) + var(--top-frame-height) + var(--mobile-month-rail-band) +
-        14px
+      env(safe-area-inset-top, 0px) + var(--mobile-chrome-under-safe-area) +
+        var(--mobile-content-below-chrome-gap)
     );
     padding-right: max(12px, env(safe-area-inset-right));
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
@@ -1300,45 +1306,93 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     --mobile-frame-extra: 52px;
   }
 
+  .mobileAppChrome {
+    position: fixed;
+    top: env(safe-area-inset-top, 0px);
+    left: max(0px, env(safe-area-inset-left, 0px));
+    right: max(0px, env(safe-area-inset-right, 0px));
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    width: auto;
+    box-sizing: border-box;
+    background: var(--bg);
+  }
+
+  .mobileAppChrome__topBand {
+    box-sizing: border-box;
+    position: relative;
+    flex: 0 0 auto;
+    height: var(--top-frame-height);
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    padding-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
+    border-bottom: var(--frame-border-width) solid var(--ink);
+  }
+
+  .mobileAppChrome__topBand .themePicker {
+    position: relative;
+    top: auto;
+    left: auto;
+    z-index: 1;
+    height: var(--top-frame-height);
+    flex-shrink: 0;
+  }
+
+  .mobileAppChrome__topBand .topTimestamp {
+    position: relative;
+    top: auto;
+    right: auto;
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: flex-end;
+    height: var(--top-frame-height);
+    z-index: 1;
+  }
+
+  .mobileAppChrome__topBand .authSignedIn {
+    position: relative;
+    top: auto;
+    right: auto;
+    left: auto;
+    transform: none;
+    flex-shrink: 0;
+    height: var(--top-frame-height);
+    width: auto;
+    z-index: 2;
+    justify-content: flex-end;
+    pointer-events: none;
+  }
+
+  .mobileAppChrome__topBand .authProfileMobile {
+    pointer-events: auto;
+  }
+
   html[data-theme="minimal"] .page {
     overflow-x: hidden;
     overflow-y: auto;
   }
 
   .page::before {
-    top: env(safe-area-inset-top, 0px);
+    content: none;
   }
 
-  .themePicker {
-    top: env(safe-area-inset-top, 0px);
-    left: max(10px, env(safe-area-inset-left));
-    gap: 4px;
-  }
-
-  .themePickerPrefix {
+  .mobileAppChrome .themePickerPrefix {
     display: none;
   }
 
-  .themeSelect {
+  .mobileAppChrome .themeSelect {
     max-width: min(140px, 40vw);
   }
 
-  .topTimestamp {
-    top: env(safe-area-inset-top, 0px);
-    right: max(10px, env(safe-area-inset-right));
+  .mobileAppChrome .topTimestamp {
     font-size: 10px;
-    max-width: 46vw;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .page--signedIn .topTimestamp {
-    right: calc(max(10px, env(safe-area-inset-right)) + 38px);
-    max-width: min(46vw, calc(100vw - 200px));
   }
 
   .authBar {
+    position: absolute;
     top: env(safe-area-inset-top, 0px);
     left: max(88px, env(safe-area-inset-left));
     right: max(88px, env(safe-area-inset-right));
@@ -1347,19 +1401,6 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     flex-wrap: wrap;
     justify-content: center;
     row-gap: 4px;
-  }
-
-  .authSignedIn {
-    position: absolute;
-    top: env(safe-area-inset-top, 0px);
-    right: max(8px, env(safe-area-inset-right));
-    left: auto;
-    height: var(--top-frame-height);
-    width: auto;
-    transform: none;
-    z-index: 6;
-    justify-content: flex-end;
-    pointer-events: none;
   }
 
   .authSignedInDesktop {
@@ -1558,13 +1599,14 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     outline-offset: 2px;
   }
 
-  .monthRail {
-    position: fixed;
-    top: calc(env(safe-area-inset-top, 0px) + var(--top-frame-height));
-    left: 0;
-    right: 0;
-    width: auto;
-    z-index: 5;
+  .mobileAppChrome .monthRail {
+    position: relative;
+    top: auto;
+    left: auto;
+    right: auto;
+    width: 100%;
+    z-index: 1;
+    flex: 0 0 auto;
     background: var(--bg);
     height: auto;
     min-height: var(--mobile-month-rail-band);
@@ -1580,7 +1622,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     padding-block: 0;
   }
 
-  .monthRail::-webkit-scrollbar {
+  .mobileAppChrome .monthRail::-webkit-scrollbar {
     display: none;
   }
 
@@ -1664,6 +1706,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   .accordion {
     width: min(100%, 100vw - 24px);
     max-width: 720px;
+    margin-inline: auto;
     height: auto;
     max-height: none;
     min-height: 0;
@@ -1785,6 +1828,13 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     bottom: -13px;
     width: 28px;
     height: 28px;
+  }
+}
+
+@media (min-width: 768px) {
+  .mobileAppChrome,
+  .mobileAppChrome__topBand {
+    display: contents;
   }
 }
 

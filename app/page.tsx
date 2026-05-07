@@ -361,6 +361,8 @@ export default function Home() {
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
   const frameArticleRefs = useRef<(HTMLElement | null)[]>([]);
+  /** Skip first mobile `scrollIntoView` so refresh keeps content below fixed chrome (padding-top). */
+  const skipMobileFrameScrollIntoViewRef = useRef(true);
   const dragRef = useRef<DragState | null>(null);
   const lastDragAppliedRef = useRef<{
     imageKey: string;
@@ -441,9 +443,19 @@ export default function Home() {
   }
 
   useEffect(() => {
+    if (wideLayout) {
+      skipMobileFrameScrollIntoViewRef.current = true;
+    }
+  }, [wideLayout]);
+
+  useEffect(() => {
     if (wideLayout) return;
     const el = frameArticleRefs.current[activeIndex];
     if (!el) return;
+    if (skipMobileFrameScrollIntoViewRef.current) {
+      skipMobileFrameScrollIntoViewRef.current = false;
+      return;
+    }
     const id = window.requestAnimationFrame(() => {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     });
@@ -1279,64 +1291,126 @@ export default function Home() {
         .join(" ")}
       onPointerDown={clearCanvasSelection}
     >
-      <LiveClock theme={theme} />
       <FavoritesAiAgent
         months={months}
         categories={categories}
         imagesByBoard={imagesByBoard}
         theme={theme}
       />
-      {editMode || user ? (
-        user ? (
-          <div className="authSignedIn" onPointerDown={(event) => event.stopPropagation()}>
-            <div className="authSignedInDesktop">
-              <span className="authUser">{user.email}</span>
-              <button className="authButton" type="button" onClick={() => void signOut()}>
-                SIGN OUT
-              </button>
-            </div>
-            <div className="authProfileMobile">
-              <button
-                type="button"
-                className="authProfileTrigger"
-                aria-label="Account menu"
-                aria-expanded={accountMenuOpen}
-                aria-haspopup="dialog"
-                onClick={() => setAccountMenuOpen((open) => !open)}
-              >
-                <ProfileMenuGlyph />
-              </button>
-              {accountMenuOpen ? (
-                <>
-                  <button
-                    type="button"
-                    className="authProfileBackdrop"
-                    aria-label="Close account menu"
-                    onClick={() => setAccountMenuOpen(false)}
-                  />
-                  <div
-                    className="authProfileMenu"
-                    role="dialog"
-                    aria-label="Account"
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    <p className="authProfileEmail">{user.email}</p>
+      <header className="mobileAppChrome">
+        <div className="mobileAppChrome__topBand">
+          <label className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
+            <span className="themePickerPrefix">Theme:</span>
+            <select
+              className="themeSelect"
+              aria-label="Visual theme"
+              value={theme}
+              onChange={(event) => updateTheme(event.target.value as ThemeName)}
+            >
+              {themes.map((themeOption) => (
+                <option key={themeOption.id} value={themeOption.id}>
+                  {theme === "minimal"
+                    ? formatMinimalSentenceCase(themeOption.label)
+                    : themeOption.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <LiveClock theme={theme} />
+          {user ? (
+            <div className="authSignedIn" onPointerDown={(event) => event.stopPropagation()}>
+              <div className="authSignedInDesktop">
+                <span className="authUser">{user.email}</span>
+                <button className="authButton" type="button" onClick={() => void signOut()}>
+                  SIGN OUT
+                </button>
+              </div>
+              <div className="authProfileMobile">
+                <button
+                  type="button"
+                  className="authProfileTrigger"
+                  aria-label="Account menu"
+                  aria-expanded={accountMenuOpen}
+                  aria-haspopup="dialog"
+                  onClick={() => setAccountMenuOpen((open) => !open)}
+                >
+                  <ProfileMenuGlyph />
+                </button>
+                {accountMenuOpen ? (
+                  <>
                     <button
                       type="button"
-                      className="authProfileSignOutButton"
-                      onClick={() => {
-                        setAccountMenuOpen(false);
-                        void signOut();
-                      }}
+                      className="authProfileBackdrop"
+                      aria-label="Close account menu"
+                      onClick={() => setAccountMenuOpen(false)}
+                    />
+                    <div
+                      className="authProfileMenu"
+                      role="dialog"
+                      aria-label="Account"
+                      onPointerDown={(event) => event.stopPropagation()}
                     >
-                      {theme === "minimal" ? "Sign out" : "SIGN OUT"}
-                    </button>
-                  </div>
-                </>
-              ) : null}
+                      <p className="authProfileEmail">{user.email}</p>
+                      <button
+                        type="button"
+                        className="authProfileSignOutButton"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          void signOut();
+                        }}
+                      >
+                        {theme === "minimal" ? "Sign out" : "SIGN OUT"}
+                      </button>
+                    </div>
+                  </>
+                ) : null}
+              </div>
             </div>
-          </div>
-        ) : (
+          ) : null}
+        </div>
+        <nav className="monthRail" aria-label="Monthly favorite boards">
+          {months.map((month, index) => {
+            const isFutureMonth = index > currentMonthIndex;
+            const isPastMonth = index < currentMonthIndex;
+            const pastCount = isPastMonth ? pastMonthBoardImageCounts[index] : null;
+            const showEmptyPastBadge = pastCount !== null && pastCount === 0;
+            const navLabel = theme === "minimal" ? formatMonthNavLabel(month.id) : month.label;
+            const unavailableLabel =
+              theme === "minimal"
+                ? `${navLabel}, upcoming month • not yet available`
+                : `${navLabel}, UPCOMING · NOT AVAILABLE YET`;
+
+            let ariaLabel = navLabel;
+            if (showEmptyPastBadge) ariaLabel = `${navLabel}, empty`;
+            else if (isFutureMonth) ariaLabel = unavailableLabel;
+
+            return (
+              <button
+                key={month.id}
+                className="monthButton"
+                data-active={index === activeMonthIndex ? "true" : undefined}
+                data-current={index === currentMonthIndex ? "true" : undefined}
+                type="button"
+                disabled={isFutureMonth}
+                aria-label={ariaLabel}
+                onClick={() => {
+                  setActiveMonthIndex(index);
+                  setSelectedImageId(null);
+                }}
+              >
+                <span aria-hidden="true">{navLabel}</span>
+                {showEmptyPastBadge ? (
+                  <span className="monthCountBadge" aria-hidden="true">
+                    {theme === "minimal" ? "0" : "[0]"}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </nav>
+      </header>
+      {editMode || user ? (
+        !user ? (
           <form
             className="authBar"
             data-auth-state="signed-out"
@@ -1411,64 +1485,8 @@ export default function Home() {
               </button>
             ) : null}
           </form>
-        )
+        ) : null
       ) : null}
-      <label className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
-        <span className="themePickerPrefix">Theme:</span>
-        <select
-          className="themeSelect"
-          aria-label="Visual theme"
-          value={theme}
-          onChange={(event) => updateTheme(event.target.value as ThemeName)}
-        >
-          {themes.map((themeOption) => (
-            <option key={themeOption.id} value={themeOption.id}>
-              {theme === "minimal"
-                ? formatMinimalSentenceCase(themeOption.label)
-                : themeOption.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <nav className="monthRail" aria-label="Monthly favorite boards">
-        {months.map((month, index) => {
-          const isFutureMonth = index > currentMonthIndex;
-          const isPastMonth = index < currentMonthIndex;
-          const pastCount = isPastMonth ? pastMonthBoardImageCounts[index] : null;
-          const showEmptyPastBadge = pastCount !== null && pastCount === 0;
-          const navLabel = theme === "minimal" ? formatMonthNavLabel(month.id) : month.label;
-          const unavailableLabel =
-            theme === "minimal" ? `${navLabel}, upcoming month • not yet available` : `${navLabel}, UPCOMING · NOT AVAILABLE YET`;
-
-          let ariaLabel = navLabel;
-          if (showEmptyPastBadge) ariaLabel = `${navLabel}, empty`;
-          else if (isFutureMonth) ariaLabel = unavailableLabel;
-
-          return (
-            <button
-              key={month.id}
-              className="monthButton"
-              data-active={index === activeMonthIndex ? "true" : undefined}
-              data-current={index === currentMonthIndex ? "true" : undefined}
-              type="button"
-              disabled={isFutureMonth}
-              aria-label={ariaLabel}
-              onClick={() => {
-                setActiveMonthIndex(index);
-                setSelectedImageId(null);
-              }}
-            >
-              <span aria-hidden="true">{navLabel}</span>
-              {showEmptyPastBadge ? (
-                <span className="monthCountBadge" aria-hidden="true">
-                  {theme === "minimal" ? "0" : "[0]"}
-                </span>
-              ) : null}
-            </button>
-          );
-        })}
-      </nav>
 
       {canEdit ? (
         <div className="frameManagerBar" onPointerDown={(event) => event.stopPropagation()}>

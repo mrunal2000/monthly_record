@@ -7,6 +7,8 @@
   /* Collapsed stripe height when the accordion stacks vertically (mobile) */
   --accordion-mobile-collapsed-height: clamp(42px, 11vw, 54px);
   --mobile-month-rail-band: 48px;
+  /* Space below fixed theme/date + months chrome before scrolling content begins */
+  --mobile-content-below-chrome-gap: clamp(12px, 3.5vw, 16px);
   --size-collapsed-frame: clamp(12px, 2vw, 16px);
   --space-accordion-gap: clamp(8px, 1.6vw, 10px);
   --size-top-frame: calc(14px + clamp(22px, 3vw, 32px));
