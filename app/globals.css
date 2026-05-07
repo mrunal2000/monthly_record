@@ -115,7 +115,9 @@ body {
   z-index: 3;
   height: var(--top-frame-height);
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
   transform: translateX(-50%);
 }
@@ -258,6 +260,26 @@ body {
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+}
+
+.authOtpHint {
+  margin: 0;
+  flex-basis: 100%;
+  width: 100%;
+  max-width: min(640px, 100%);
+  text-align: center;
+  color: var(--ink);
+  font-size: 10px;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.authInput--otp {
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.08em;
+  text-align: center;
+  width: min(164px, 44vw);
 }
 
 .authScreenHeadline,
@@ -925,6 +947,13 @@ html[data-theme="minimal"] .authMessage {
   font-size: 12px;
 }
 
+html[data-theme="minimal"] .authOtpHint {
+  text-transform: none;
+  letter-spacing: 0;
+  font-family: var(--font-body);
+  font-size: 12px;
+}
+
 /* Minimal: upright month list (horizontal labels, stacked) */
 html[data-theme="minimal"] .monthRail {
   align-items: stretch;
@@ -1196,6 +1225,16 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   border-color: rgb(15 15 15 / 0.35);
 }
 
+@media (min-width: 768px) {
+  .authBar[data-awaiting-otp="true"] {
+    height: auto;
+    min-height: var(--top-frame-height);
+    max-height: none;
+    padding-block: 6px 10px;
+    box-sizing: border-box;
+  }
+}
+
 /* ----- Mobile portrait: vertical accordion + horizontal month rail --------- */
 
 @media (max-width: 767px) {
@@ -1390,6 +1429,23 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     margin-inline: auto;
   }
 
+  .authBar[data-auth-state="signed-out"] .authOtpHint {
+    box-sizing: border-box;
+    max-width: min(360px, 100%);
+    margin-inline: auto;
+    font-size: clamp(11px, 3.2vw, 13px);
+    line-height: 1.4;
+  }
+
+  .authBar[data-auth-state="signed-out"] .authInput--otp {
+    width: min(360px, 100%);
+    max-width: 400px;
+    height: 48px;
+    margin-inline: auto;
+    font-size: 20px;
+    letter-spacing: 0.16em;
+  }
+
   .authBar[data-auth-state="signed-out"] .authScreenDismiss {
     display: block;
     width: min(360px, 100%);
@@ -1421,7 +1477,8 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   html[data-theme="minimal"] .authBar[data-auth-state="signed-out"] .authButton,
-  html[data-theme="minimal"] .authBar[data-auth-state="signed-out"] .authInput {
+  html[data-theme="minimal"] .authBar[data-auth-state="signed-out"] .authInput,
+  html[data-theme="minimal"] .authBar[data-auth-state="signed-out"] .authInput--otp {
     border-radius: 8px;
   }
 

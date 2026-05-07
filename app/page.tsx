@@ -272,6 +272,8 @@ export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [authEmail, setAuthEmail] = useState("");
   const [authMessage, setAuthMessage] = useState("");
+  const [authAwaitingCode, setAuthAwaitingCode] = useState(false);
+  const [authOtp, setAuthOtp] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>("brutalist");
@@ -443,6 +445,8 @@ export default function Home() {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       setAuthMessage("");
+      setAuthAwaitingCode(false);
+      setAuthOtp("");
     });
 
     return () => data.subscription.unsubscribe();
@@ -916,31 +920,65 @@ export default function Home() {
     if (selectedImageId === imageId) setSelectedImageId(null);
   }
 
-  async function signIn(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function sendEmailOtp() {
     if (!supabase || !authEmail.trim()) return;
 
+    setAuthOtp("");
     setAuthMessage("CHECK EMAIL");
+    const origin = typeof window !== "undefined" ? window.location.origin : "";
     const { error } = await supabase.auth.signInWithOtp({
       email: authEmail.trim(),
       options: {
-        emailRedirectTo: `${window.location.origin}?edit=1`,
+        ...(origin ? { emailRedirectTo: `${origin}?edit=1` } : {}),
       },
     });
 
     if (error) {
       console.error("Could not sign in:", error.message);
       setAuthMessage("SIGN IN ERROR");
+      setAuthAwaitingCode(false);
       return;
     }
 
-    setAuthMessage("MAGIC LINK SENT");
+    setAuthAwaitingCode(true);
+    setAuthMessage("MAGIC LINK SENT · USE CODE IN APP IF NO LINK");
+  }
+
+  async function verifyEmailOtp() {
+    if (!supabase || !authEmail.trim() || !authOtp.trim()) return;
+
+    const token = authOtp.replace(/\s/g, "");
+    setAuthMessage("VERIFYING · · ·");
+
+    const { error } = await supabase.auth.verifyOtp({
+      email: authEmail.trim(),
+      token,
+      type: "email",
+    });
+
+    if (error) {
+      console.error("Could not verify code:", error.message);
+      setAuthMessage("BAD OR EXPIRED CODE");
+      return;
+    }
+
+    setAuthAwaitingCode(false);
+    setAuthOtp("");
+  }
+
+  async function submitAuthForm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!supabase || !authEmail.trim()) return;
+    if (authAwaitingCode) await verifyEmailOtp();
+    else await sendEmailOtp();
   }
 
   async function signOut() {
     if (!supabase) return;
     await supabase.auth.signOut();
     setSelectedImageId(null);
+    setAuthAwaitingCode(false);
+    setAuthOtp("");
   }
 
   function leaveEditFlow() {
@@ -1013,7 +1051,8 @@ export default function Home() {
           <form
             className="authBar"
             data-auth-state="signed-out"
-            onSubmit={signIn}
+            data-awaiting-otp={authAwaitingCode ? "true" : undefined}
+            onSubmit={(event) => void submitAuthForm(event)}
             onPointerDown={(event) => event.stopPropagation()}
           >
             <h2
@@ -1027,13 +1066,50 @@ export default function Home() {
               type="email"
               placeholder="email to edit"
               value={authEmail}
-              onChange={(event) => setAuthEmail(event.target.value)}
+              onChange={(event) => {
+                const next = event.target.value;
+                setAuthEmail(next);
+                setAuthAwaitingCode(false);
+                setAuthOtp("");
+                setAuthMessage("");
+              }}
               autoComplete="email"
               inputMode="email"
             />
-            <button className="authButton" type="submit">
-              SIGN IN
-            </button>
+            {authAwaitingCode ? (
+              <>
+                <p className="authOtpHint" id="otp-hint">
+                  {theme === "minimal"
+                    ? "Magic links usually open Safari, not this app. Enter the verification code from the email here."
+                    : "MAGIC LINKS OPEN SAFARI · ENTER THE EMAIL CODE HERE TO SIGN IN INSIDE THIS APP"}
+                </p>
+                <input
+                  className="authInput authInput--otp"
+                  type="text"
+                  placeholder={theme === "minimal" ? "code from email" : "CODE FROM EMAIL"}
+                  value={authOtp}
+                  onChange={(event) => setAuthOtp(event.target.value)}
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={12}
+                  aria-labelledby="otp-hint"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      void verifyEmailOtp();
+                    }
+                  }}
+                />
+                <button className="authButton" type="submit">
+                  {theme === "minimal" ? "Verify code" : "VERIFY CODE"}
+                </button>
+              </>
+            ) : (
+              <button className="authButton" type="submit">
+                SIGN IN
+              </button>
+            )}
             {authMessage ? <span className="authMessage">{authMessage}</span> : null}
             {editMode ? (
               <button className="authScreenDismiss" type="button" onClick={leaveEditFlow}>
