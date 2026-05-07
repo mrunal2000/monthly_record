@@ -691,24 +691,8 @@ body {
 /* ----- Theme surfaces & editorial tweaks -------------------------------- */
 
 html[data-theme="paper"] .page {
-  background-color: var(--color-bg);
-  background-image:
-    radial-gradient(rgb(82 71 54 / 0.07) 0.65px, transparent 0.65px),
-    linear-gradient(rgb(253 251 243 / 0.32), rgb(246 239 226 / 0)),
-    repeating-linear-gradient(
-      90deg,
-      rgb(38 34 29 / 0.06),
-      rgb(38 34 29 / 0.06) 1px,
-      transparent 1px,
-      transparent min(148px, 22vw)
-    );
-  background-size:
-    12px 12px,
-    100% 100%,
-    100%;
-  box-shadow:
-    inset 0 2px 0 rgb(255 255 253 / 0.4),
-    inset 0 -80px 90px rgb(210 194 164 / 0.14);
+  background: var(--color-bg);
+  box-shadow: none;
 }
 
 html[data-theme="paper"] .page::before {
@@ -760,6 +744,112 @@ html[data-theme="paper"] .imageCanvas {
     auto,
     56px 56px,
     56px 56px;
+}
+
+/* Paper accordion slots — aligns with Paper design ref (mast bar, spine caps, mono rail) */
+
+html[data-theme="paper"] .frameRect {
+  box-sizing: border-box;
+}
+
+/* Collapsed spine: Paper ref node 7C-0 — white shaft, inset black cap, 1px black rule */
+html[data-theme="paper"] .frame:not([data-active="true"]) .frameRect {
+  border: 1px solid var(--paper-slot-mast);
+  background: linear-gradient(
+    to bottom,
+    var(--paper-slot-mast),
+    var(--paper-slot-mast) var(--paper-spine-cap-height),
+    var(--paper-spine-fill) var(--paper-spine-cap-height),
+    var(--paper-spine-fill) 100%
+  );
+}
+
+html[data-theme="paper"] .frame:not([data-active="true"]) .frameLabel {
+  font-family: var(--font-body);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .frameRect {
+  background-color: var(--paper-slot-bg);
+  border: 1px solid var(--paper-slot-mast);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .frameRect::before {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--paper-spine-cap-height);
+  background: var(--paper-slot-mast);
+  pointer-events: none;
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .frameContent {
+  top: calc(clamp(16px, 3vw, 28px) + var(--paper-spine-cap-height));
+  z-index: 3;
+  color: var(--ink);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .frameTitle {
+  color: var(--paper-slot-mast);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .frameNote,
+html[data-theme="paper"] .frame[data-active="true"] .frameNoteEditable {
+  color: var(--ink);
+  opacity: 0.88;
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .addButton {
+  border-color: var(--paper-slot-mast);
+  color: var(--paper-slot-mast);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .addButton:hover {
+  background: var(--paper-slot-mast);
+  color: var(--paper-slot-bg);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .deleteSelectedButton {
+  border-color: var(--paper-slot-mast);
+  color: var(--paper-slot-mast);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .deleteSelectedButton:hover {
+  background: var(--paper-slot-mast);
+  color: var(--paper-slot-bg);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .imageCanvas {
+  border: 1px solid var(--paper-slot-mast);
+  border-inline-width: 1px;
+  background-color: #ffffff;
+  background-image:
+    linear-gradient(rgb(15 15 15 / 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(15 15 15 / 0.12) 1px, transparent 1px);
+  background-size: 56px 56px;
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .imageControl {
+  border-color: var(--paper-slot-mast);
+  background: var(--paper-slot-bg);
+  color: var(--paper-slot-mast);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .imageControl:hover {
+  background: var(--paper-slot-mast);
+  color: var(--paper-slot-bg);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .canvasImage {
+  border-color: var(--paper-slot-mast);
+}
+
+html[data-theme="paper"] .frame[data-active="true"] .imageShader {
+  border-color: rgb(15 15 15 / 0.35);
 }
 
 html[data-theme="bnw"] .page {

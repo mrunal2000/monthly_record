@@ -769,7 +769,7 @@ export default function Home() {
             <button
               key={month.id}
               className="monthButton"
-              data-active={index === activeMonthIndex}
+              data-active={index === activeMonthIndex ? "true" : undefined}
               data-current={index === currentMonthIndex}
               type="button"
               aria-label={
@@ -833,7 +833,7 @@ export default function Home() {
             <article
               key={item.id}
               className="frame"
-              data-active={isActive}
+              data-active={isActive ? "true" : undefined}
               data-direction={isActive ? openDirection : undefined}
               style={
                 {

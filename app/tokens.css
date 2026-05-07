@@ -23,7 +23,7 @@ html[data-theme="paper"] {
   --font-body: "Newsreader", Georgia, "Times New Roman", serif;
   --font-chrome: "Oswald", "Arial Narrow", "Helvetica Neue", system-ui, sans-serif;
 
-  --color-bg: #e4dfd3;
+  --color-bg: #ffffff;
   --color-ink: #0f0f0f;
   --color-muted: #4a463d;
   --color-surface: #faf7ef;
@@ -43,6 +43,13 @@ html[data-theme="paper"] {
   --border-frame: 1px;
   --motion-panel-duration: 470ms;
   --motion-panel-ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Accordion slot (Paper reference UI) */
+  --paper-slot-bg: #f7f7f7;
+  --paper-slot-mast: #0f0f0f;
+  --paper-spine-cap-height: 18px;
+  /* Collapsed spine body (Paper node 7C-0) */
+  --paper-spine-fill: #ffffff;
 
   --font-frame-display:
     "OPTI Engravers Old English",
