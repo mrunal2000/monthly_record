@@ -2,14 +2,14 @@
 [data-theme="gallery"] {
   color-scheme: light;
 
-  --primitive-white: #ffffff;
-  --primitive-black: #000000;
-  --primitive-gray-500: #707070;
-  --primitive-blue-600: #4c54cc;
-  --primitive-pink-500: #d55192;
-  --primitive-purple-700: #6e3c8a;
-  --primitive-periwinkle-500: #7b85ba;
-  --primitive-green-700: #2f7d4c;
+  --primitive-white: #fbfaf5;
+  --primitive-black: #111111;
+  --primitive-gray-500: #6e6a62;
+  --primitive-blue-600: #1847d5;
+  --primitive-pink-500: #d6005f;
+  --primitive-purple-700: #5a2b8c;
+  --primitive-periwinkle-500: #d7dbe8;
+  --primitive-green-700: #17633f;
 
   --color-bg: var(--primitive-white);
   --color-ink: var(--primitive-black);
@@ -22,7 +22,7 @@
   --category-wishlist: var(--primitive-periwinkle-500);
   --category-food: var(--primitive-green-700);
   --category-on-dark: var(--primitive-white);
-  --category-on-light: #07101f;
+  --category-on-light: #111111;
 
   --size-collapsed-frame: clamp(12px, 2vw, 16px);
   --space-accordion-gap: clamp(8px, 1.6vw, 10px);

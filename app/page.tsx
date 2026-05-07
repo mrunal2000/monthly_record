@@ -670,9 +670,7 @@ export default function Home() {
                   <span className="canvasHeader">
                     <span>
                       <span className="frameTitle">{item.label}</span>
-                      <span className="frameNote">
-                        {activeMonth.label} favorites. {item.note}
-                      </span>
+                      <span className="frameNote">{item.note}</span>
                     </span>
                     {canEdit ? (
                       <span className="canvasActions">
@@ -725,22 +723,22 @@ export default function Home() {
                         <img className="canvasImage" src={image.src} alt="" draggable={false} />
                         {theme === "bnw" ? (
                           <HalftoneCmyk
-                            size={0.06}
-                            gridNoise={0.04}
+                            size={0.08}
+                            gridNoise={0.01}
                             type="ink"
-                            softness={0.35}
-                            contrast={0.9}
-                            gainC={0.22}
-                            gainM={0.16}
-                            gainY={0.18}
-                            gainK={0.12}
-                            floodC={0}
+                            softness={1}
+                            contrast={1}
+                            gainC={0.3}
+                            gainM={0}
+                            gainY={0.2}
+                            gainK={0}
+                            floodC={0.15}
                             floodM={0}
                             floodY={0}
                             floodK={0}
                             scale={1}
                             image={image.src}
-                            grainSize={0.14}
+                            grainSize={0.5}
                             fit="cover"
                             colorBack="#00000000"
                             colorC="#00B4FF"
@@ -748,7 +746,7 @@ export default function Home() {
                             colorY="#FFD800"
                             colorK="#231F20"
                             className="imageShader"
-                            style={{ backgroundColor: "#FFFFFF", height: "100%", width: "100%" }}
+                            style={{ backgroundColor: "#FBFAF5", height: "100%", width: "100%" }}
                           />
                         ) : null}
                         {canEdit ? (

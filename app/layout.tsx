@@ -4,6 +4,9 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Paper Rectangle Accordion",
   description: "A Paper-inspired interactive rectangle accordion built with canvas.",
+  icons: {
+    icon: "/favicon.png",
+  },
 };
 
 export default function RootLayout({
