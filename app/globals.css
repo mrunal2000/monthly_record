@@ -316,6 +316,30 @@ body {
     color 150ms ease;
 }
 
+.canvasActions {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.deleteSelectedButton {
+  min-height: clamp(30px, 5vw, 38px);
+  border: 1px solid currentColor;
+  padding: 0 9px;
+  background: transparent;
+  color: var(--frame-text-color);
+  font: inherit;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.deleteSelectedButton:hover {
+  background: var(--frame-text-color);
+  color: var(--frame-color);
+}
+
 .addButton:hover {
   background: var(--frame-text-color);
   color: var(--frame-color);
@@ -451,7 +475,8 @@ body {
   .frameContent,
   .addButton,
   .monthButton,
-  .authButton {
+  .authButton,
+  .deleteSelectedButton {
     animation: none;
     transition: none;
   }

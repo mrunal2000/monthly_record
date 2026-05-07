@@ -115,7 +115,7 @@ export default function Home() {
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const dragRef = useRef<DragState | null>(null);
   const activeMonth = months[activeMonthIndex];
-  const canEdit = editMode && Boolean(user);
+  const canEdit = Boolean(user);
 
   useEffect(() => {
     setNow(new Date());
@@ -493,7 +493,7 @@ export default function Home() {
     const { error } = await supabase.auth.signInWithOtp({
       email: authEmail.trim(),
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: `${window.location.origin}?edit=1`,
       },
     });
 
@@ -580,6 +580,7 @@ export default function Home() {
           const isActive = index === activeIndex;
           const imageKey = boardKey(index);
           const boardImages = imagesByBoard[imageKey] ?? [];
+          const selectedImage = boardImages.find((image) => image.id === selectedImageId);
 
           return (
             <article
@@ -614,18 +615,32 @@ export default function Home() {
                       </span>
                     </span>
                     {canEdit ? (
-                      <label className="addButton" onClick={(event) => event.stopPropagation()}>
-                        <span aria-hidden="true">+</span>
-                        <span className="srOnly">Add images to {item.label}</span>
-                        <input
-                          className="fileInput"
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          tabIndex={isActive ? 0 : -1}
-                          onChange={(event) => addImages(event, index)}
-                        />
-                      </label>
+                      <span className="canvasActions">
+                        {selectedImage ? (
+                          <button
+                            className="deleteSelectedButton"
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              removeImage(imageKey, selectedImage.id);
+                            }}
+                          >
+                            DELETE SELECTED
+                          </button>
+                        ) : null}
+                        <label className="addButton" onClick={(event) => event.stopPropagation()}>
+                          <span aria-hidden="true">+</span>
+                          <span className="srOnly">Add images to {item.label}</span>
+                          <input
+                            className="fileInput"
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            tabIndex={isActive ? 0 : -1}
+                            onChange={(event) => addImages(event, index)}
+                          />
+                        </label>
+                      </span>
                     ) : null}
                   </span>
                   <span className="imageCanvas">
