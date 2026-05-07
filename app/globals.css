@@ -1713,7 +1713,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     flex-direction: column;
     align-items: stretch;
     align-content: stretch;
-    overscroll-behavior: contain;
+    overscroll-behavior: auto;
   }
 
   .frame {
@@ -1729,7 +1729,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
       height 240ms ease;
   }
 
-  /* Collapsed: fast taps expand a row. Open: neutral so inner canvas `touch-action: none` wins on iOS. */
+  /* Collapsed row: fast taps expand. Active-frame canvas touch overrides follow .frame[data-active="true"]. */
   .frame:not([data-active="true"]) {
     flex-basis: var(--accordion-mobile-collapsed-height);
     touch-action: manipulation;
@@ -1742,6 +1742,24 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     flex-basis: auto;
     min-height: var(--accordion-mobile-slot-height);
     max-height: none;
+  }
+
+  /*
+   Canvas was `touch-action: none` globally so image drags wouldn’t tear on iOS, but that also blocks the
+   main page (`main.page`) from receiving vertical pans. Let the browser scroll the page unless a drag
+   is in progress (`installCanvasDragScrollGuard` + pointer routing still clamp while moving images).
+ */
+  .frame[data-active="true"] .imageCanvas {
+    touch-action: pan-y pinch-zoom;
+    overscroll-behavior: auto;
+  }
+
+  .frame[data-active="true"] .imageItem {
+    touch-action: manipulation;
+  }
+
+  .frame[data-active="true"] .imageItem .resizeHandle {
+    touch-action: none;
   }
 
   /*
