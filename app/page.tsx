@@ -25,6 +25,8 @@ function isEmailSendRateLimited(
     blob.includes("too many")
   );
 }
+import FavoritesAiAgent from "./components/FavoritesAiAgent";
+import { normalizeImageFileForStorage } from "./lib/normalizeUploadImage";
 import { FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
 
 type Category = {
@@ -578,15 +580,24 @@ export default function Home() {
   async function uploadImageFile(file: File, imageKey: string) {
     if (!canEdit) throw new Error("Sign in to add images.");
 
+    let uploadFile: File;
+    try {
+      uploadFile = await normalizeImageFileForStorage(file);
+    } catch {
+      throw new Error(
+        "Could not decode this photo (often HEIC/HEIF from iPhone — try exporting as JPEG from Photos or use Safari).",
+      );
+    }
+
     if (!supabase) {
       return {
-        src: URL.createObjectURL(file),
+        src: URL.createObjectURL(uploadFile),
         storagePath: undefined,
       };
     }
 
-    const storagePath = `${imageKey}/${crypto.randomUUID()}-${safeFileName(file.name)}`;
-    const { error } = await supabase.storage.from(FAVORITES_BUCKET).upload(storagePath, file);
+    const storagePath = `${imageKey}/${crypto.randomUUID()}-${safeFileName(uploadFile.name)}`;
+    const { error } = await supabase.storage.from(FAVORITES_BUCKET).upload(storagePath, uploadFile);
 
     if (error) throw error;
 
@@ -1052,6 +1063,12 @@ export default function Home() {
       onPointerDown={clearCanvasSelection}
     >
       <LiveClock theme={theme} />
+      <FavoritesAiAgent
+        months={months}
+        categories={categories}
+        imagesByBoard={imagesByBoard}
+        theme={theme}
+      />
       {editMode || user ? (
         user ? (
           <div className="authSignedIn" onPointerDown={(event) => event.stopPropagation()}>
