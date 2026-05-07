@@ -873,16 +873,15 @@ export default function Home() {
     if (canvasRect.width < 1 || canvasRect.height < 1) return;
 
     const { cx, cy } = clampClientPointToCanvas(clientX, clientY, canvasRect);
-    const itemRect = drag.mode === "move" ? drag.element.getBoundingClientRect() : null;
 
-    const next = getUpdatedImage(image, cx, cy, canvasRect, drag, itemRect);
+    const next = getUpdatedImage(image, cx, cy, canvasRect, drag);
 
     lastDragAppliedRef.current = {
       imageKey: drag.imageKey,
       imageId: drag.imageId,
       x: next.x,
       y: next.y,
-      width: next.width,
+      width: drag.mode === "move" ? image.width : next.width,
     };
 
     if (drag.mode === "move") {
@@ -958,7 +957,7 @@ export default function Home() {
       ...priorImage,
       x: last.x,
       y: last.y,
-      width: last.width,
+      width: dragSnap.mode === "move" ? priorImage.width : last.width,
     };
 
     const saneGeom =
@@ -1013,7 +1012,6 @@ export default function Home() {
     clientY: number,
     canvasRect: DOMRect,
     drag: DragState,
-    itemRect: DOMRect | null,
   ) {
     if (canvasRect.width < 1 || canvasRect.height < 1) {
       return { ...image };
@@ -1032,17 +1030,37 @@ export default function Home() {
       return { ...image, width: w };
     }
 
-    const itemWidth = itemRect?.width ?? (image.width / 100) * canvasRect.width;
-    const itemHeight = itemRect?.height ?? 0;
+    /*
+     * MOVE: bounds in canvas %-space — do NOT use getBoundingClientRect() width/height for clamps.
+     * Rotated transforms inflate the axis-aligned bounding box vs image.width%/intrinsic layout, yielding
+     * negative/tiny maxX and broken drags/huge glitchy commits on desktop + touch.
+     */
+    const imgEl = drag.element.querySelector("img.canvasImage");
+    const displayedWidthPx = (image.width / 100) * canvasRect.width;
+
+    let heightFracOfCanvas: number;
+    if (imgEl instanceof HTMLImageElement && imgEl.naturalWidth > 0 && imgEl.naturalHeight > 0) {
+      const intrinsicH = (displayedWidthPx * imgEl.naturalHeight) / imgEl.naturalWidth;
+      heightFracOfCanvas = (intrinsicH / canvasRect.height) * 100;
+    } else {
+      heightFracOfCanvas = ((displayedWidthPx * 1.35) / canvasRect.height) * 100;
+    }
+    heightFracOfCanvas = clamp(heightFracOfCanvas, 1, 100);
+    const maxX = Math.max(0, 100 - image.width);
+    const maxY = Math.max(0, 100 - heightFracOfCanvas);
+
     const x = ((clientX - canvasRect.left - drag.offsetX) / canvasRect.width) * 100;
     const y = ((clientY - canvasRect.top - drag.offsetY) / canvasRect.height) * 100;
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       return { ...image };
     }
-    const maxX = ((canvasRect.width - itemWidth) / canvasRect.width) * 100;
-    const maxY = ((canvasRect.height - itemHeight) / canvasRect.height) * 100;
 
-    return { ...image, x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) };
+    return {
+      ...image,
+      width: image.width,
+      x: clamp(x, 0, maxX),
+      y: clamp(y, 0, maxY),
+    };
   }
 
   function rotateImage(imageKey: string, imageId: string, amount: number) {
