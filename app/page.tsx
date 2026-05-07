@@ -108,8 +108,12 @@ type DragState = {
   offsetX: number;
   offsetY: number;
   element: HTMLElement;
+  pointerId: number;
+  canvasEl: HTMLElement;
   /** Undo document touchmove blocker (mobile scroll steals drag gestures otherwise). */
   scrollGuardUnload?: () => void;
+  /** iOS/Safari: pointermove/up on the node under capture is unreliable — route from window. */
+  windowPointerUnload?: () => void;
 };
 
 /** Prevent the page (`main.page`) from scrolling mid-gesture — `touch-action: none` is not reliable on nested iOS/Safari. */
@@ -121,6 +125,40 @@ function installCanvasDragScrollGuard(): () => void {
   };
   document.addEventListener("touchmove", blockTouchMove as EventListener, opts);
   return () => document.removeEventListener("touchmove", blockTouchMove as EventListener, opts);
+}
+
+/** Route pointer stream from `window` so touch drags still receive move/end on iOS WebKit (element capture alone is flaky). */
+function installCanvasWindowPointerRouting(
+  pointerId: number,
+  onMove: (clientX: number, clientY: number) => void,
+  onEnd: (clientX: number, clientY: number) => void,
+): () => void {
+  if (typeof window === "undefined") return () => {};
+  const opts = { capture: true } as const;
+  const move = (evt: Event) => {
+    const e = evt instanceof globalThis.PointerEvent ? evt : null;
+    if (!e || e.pointerId !== pointerId) return;
+    if (e.pointerType === "touch") {
+      e.preventDefault();
+    }
+    onMove(e.clientX, e.clientY);
+  };
+  const end = (evt: Event) => {
+    const e = evt instanceof globalThis.PointerEvent ? evt : null;
+    if (!e || e.pointerId !== pointerId) return;
+    if (e.pointerType === "touch") {
+      e.preventDefault();
+    }
+    onEnd(e.clientX, e.clientY);
+  };
+  window.addEventListener("pointermove", move, opts);
+  window.addEventListener("pointerup", end, opts);
+  window.addEventListener("pointercancel", end, opts);
+  return () => {
+    window.removeEventListener("pointermove", move, opts);
+    window.removeEventListener("pointerup", end, opts);
+    window.removeEventListener("pointercancel", end, opts);
+  };
 }
 
 type ThemeName = "paper" | "brutalist" | "minimal";
@@ -724,11 +762,28 @@ export default function Home() {
     event.stopPropagation();
     if (!canEdit) return;
 
+    const canvasEl = event.currentTarget.closest(".imageCanvas");
+    if (!(canvasEl instanceof HTMLElement)) return;
+
     const image = imagesByBoardRef.current[imageKey]?.find((entry) => entry.id === imageId);
     if (!image) return;
 
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+    }
+
     const imageRect = event.currentTarget.getBoundingClientRect();
+    const pointerId = event.pointerId;
     setSelectedImageId(imageId);
+    lastDragAppliedRef.current = null;
+
+    const scrollGuardUnload = installCanvasDragScrollGuard();
+    const windowPointerUnload = installCanvasWindowPointerRouting(
+      pointerId,
+      updateDragGeometry,
+      stopDragAt,
+    );
+
     dragRef.current = {
       mode: "move",
       imageKey,
@@ -736,10 +791,16 @@ export default function Home() {
       offsetX: event.clientX - imageRect.left,
       offsetY: event.clientY - imageRect.top,
       element: event.currentTarget,
-      scrollGuardUnload: installCanvasDragScrollGuard(),
+      pointerId,
+      canvasEl,
+      scrollGuardUnload,
+      windowPointerUnload,
     };
-    lastDragAppliedRef.current = null;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(pointerId);
+    } catch {
+      /* noop */
+    }
   }
 
   function startResize(event: PointerEvent<HTMLSpanElement>, imageKey: string, imageId: string) {
@@ -749,7 +810,24 @@ export default function Home() {
     const imageItem = event.currentTarget.closest(".imageItem");
     if (!(imageItem instanceof HTMLElement)) return;
 
+    const canvasEl = imageItem.closest(".imageCanvas");
+    if (!(canvasEl instanceof HTMLElement)) return;
+
+    if (event.pointerType === "touch") {
+      event.preventDefault();
+    }
+
+    const pointerId = event.pointerId;
     setSelectedImageId(imageId);
+    lastDragAppliedRef.current = null;
+
+    const scrollGuardUnload = installCanvasDragScrollGuard();
+    const windowPointerUnload = installCanvasWindowPointerRouting(
+      pointerId,
+      updateDragGeometry,
+      stopDragAt,
+    );
+
     dragRef.current = {
       mode: "resize",
       imageKey,
@@ -757,20 +835,24 @@ export default function Home() {
       offsetX: 0,
       offsetY: 0,
       element: imageItem,
-      scrollGuardUnload: installCanvasDragScrollGuard(),
+      pointerId,
+      canvasEl,
+      scrollGuardUnload,
+      windowPointerUnload,
     };
-    lastDragAppliedRef.current = null;
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(pointerId);
+    } catch {
+      /* noop */
+    }
   }
 
-  function updateImageFromPointer(event: PointerEvent<HTMLElement>) {
+  function updateDragGeometry(clientX: number, clientY: number) {
     if (!canEdit) return;
 
     const drag = dragRef.current;
-    const canvasEl = event.currentTarget.closest(".imageCanvas");
+    const canvasEl = drag?.canvasEl;
     if (!drag || !canvasEl || !drag.element) return;
-
-    event.stopPropagation();
 
     const image = imagesByBoardRef.current[drag.imageKey]?.find((entry) => entry.id === drag.imageId);
     if (!image) return;
@@ -778,7 +860,7 @@ export default function Home() {
     const canvasRect = canvasEl.getBoundingClientRect();
     const itemRect = drag.mode === "move" ? drag.element.getBoundingClientRect() : null;
 
-    const next = getUpdatedImage(image, event.clientX, event.clientY, canvasRect, drag, itemRect);
+    const next = getUpdatedImage(image, clientX, clientY, canvasRect, drag, itemRect);
 
     lastDragAppliedRef.current = {
       imageKey: drag.imageKey,
@@ -796,37 +878,14 @@ export default function Home() {
     }
   }
 
-  function getUpdatedImage(
-    image: CanvasImage,
-    clientX: number,
-    clientY: number,
-    canvasRect: DOMRect,
-    drag: DragState,
-    itemRect: DOMRect | null,
-  ) {
-    if (drag.mode === "resize") {
-      const pointerX = ((clientX - canvasRect.left) / canvasRect.width) * 100;
-      const nextWidth = pointerX - image.x;
-      return { ...image, width: clamp(nextWidth, 16, Math.max(16, 100 - image.x)) };
-    }
-
-    const itemWidth = itemRect?.width ?? (image.width / 100) * canvasRect.width;
-    const itemHeight = itemRect?.height ?? 0;
-    const x = ((clientX - canvasRect.left - drag.offsetX) / canvasRect.width) * 100;
-    const y = ((clientY - canvasRect.top - drag.offsetY) / canvasRect.height) * 100;
-    const maxX = ((canvasRect.width - itemWidth) / canvasRect.width) * 100;
-    const maxY = ((canvasRect.height - itemHeight) / canvasRect.height) * 100;
-
-    return { ...image, x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) };
-  }
-
-  function stopDrag(event: PointerEvent<HTMLElement>) {
-    event.stopPropagation();
-
+  function stopDragAt(clientX: number, clientY: number) {
     const dragSnap = dragRef.current;
-    dragSnap?.scrollGuardUnload?.();
+    if (!dragSnap) return;
 
-    if (!dragSnap?.element) {
+    dragSnap.scrollGuardUnload?.();
+    dragSnap.windowPointerUnload?.();
+
+    if (!dragSnap.element) {
       dragRef.current = null;
       lastDragAppliedRef.current = null;
       return;
@@ -841,7 +900,13 @@ export default function Home() {
       return;
     }
 
-    updateImageFromPointer(event);
+    try {
+      dragSnap.element.releasePointerCapture(dragSnap.pointerId);
+    } catch {
+      /* noop */
+    }
+
+    updateDragGeometry(clientX, clientY);
 
     const priorImage = imagesByBoardRef.current[dragSnap.imageKey]?.find(
       (entry) => entry.id === dragSnap.imageId,
@@ -901,6 +966,30 @@ export default function Home() {
     if (categoryId) {
       void saveImageRecord(dragSnap.imageKey, categoryId, patchedImage);
     }
+  }
+
+  function getUpdatedImage(
+    image: CanvasImage,
+    clientX: number,
+    clientY: number,
+    canvasRect: DOMRect,
+    drag: DragState,
+    itemRect: DOMRect | null,
+  ) {
+    if (drag.mode === "resize") {
+      const pointerX = ((clientX - canvasRect.left) / canvasRect.width) * 100;
+      const nextWidth = pointerX - image.x;
+      return { ...image, width: clamp(nextWidth, 16, Math.max(16, 100 - image.x)) };
+    }
+
+    const itemWidth = itemRect?.width ?? (image.width / 100) * canvasRect.width;
+    const itemHeight = itemRect?.height ?? 0;
+    const x = ((clientX - canvasRect.left - drag.offsetX) / canvasRect.width) * 100;
+    const y = ((clientY - canvasRect.top - drag.offsetY) / canvasRect.height) * 100;
+    const maxX = ((canvasRect.width - itemWidth) / canvasRect.width) * 100;
+    const maxY = ((canvasRect.height - itemHeight) / canvasRect.height) * 100;
+
+    return { ...image, x: clamp(x, 0, maxX), y: clamp(y, 0, maxY) };
   }
 
   function rotateImage(imageKey: string, imageId: string, amount: number) {
@@ -1479,7 +1568,13 @@ export default function Home() {
                       </span>
                     ) : null}
                   </span>
-                  <span className="imageCanvas" onPointerDown={clearCanvasSelection}>
+                  <span
+                    className="imageCanvas"
+                    onPointerDown={clearCanvasSelection}
+                    onContextMenu={(event) => {
+                      if (canEdit) event.preventDefault();
+                    }}
+                  >
                     {boardImages.map((image) => (
                       <span
                         key={image.id}
@@ -1497,9 +1592,6 @@ export default function Home() {
                           } as CSSProperties
                         }
                         onPointerDown={(event) => startDrag(event, imageKey, image.id)}
-                        onPointerMove={updateImageFromPointer}
-                        onPointerUp={stopDrag}
-                        onPointerCancel={stopDrag}
                       >
                         <img className="canvasImage" src={image.src} alt="" draggable={false} />
                         {canEdit ? (
@@ -1546,9 +1638,6 @@ export default function Home() {
                               className="resizeHandle"
                               aria-hidden="true"
                               onPointerDown={(event) => startResize(event, imageKey, image.id)}
-                              onPointerMove={updateImageFromPointer}
-                              onPointerUp={stopDrag}
-                              onPointerCancel={stopDrag}
                             />
                           </>
                         ) : null}
