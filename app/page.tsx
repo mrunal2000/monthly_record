@@ -108,7 +108,20 @@ type DragState = {
   offsetX: number;
   offsetY: number;
   element: HTMLElement;
+  /** Undo document touchmove blocker (mobile scroll steals drag gestures otherwise). */
+  scrollGuardUnload?: () => void;
 };
+
+/** Prevent the page (`main.page`) from scrolling mid-gesture — `touch-action: none` is not reliable on nested iOS/Safari. */
+function installCanvasDragScrollGuard(): () => void {
+  if (typeof document === "undefined") return () => {};
+  const opts = { capture: true, passive: false } as const;
+  const blockTouchMove = (e: TouchEvent) => {
+    e.preventDefault();
+  };
+  document.addEventListener("touchmove", blockTouchMove as EventListener, opts);
+  return () => document.removeEventListener("touchmove", blockTouchMove as EventListener, opts);
+}
 
 type ThemeName = "paper" | "brutalist" | "minimal";
 type OpenDirection = "ltr" | "rtl";
@@ -723,6 +736,7 @@ export default function Home() {
       offsetX: event.clientX - imageRect.left,
       offsetY: event.clientY - imageRect.top,
       element: event.currentTarget,
+      scrollGuardUnload: installCanvasDragScrollGuard(),
     };
     lastDragAppliedRef.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -743,6 +757,7 @@ export default function Home() {
       offsetX: 0,
       offsetY: 0,
       element: imageItem,
+      scrollGuardUnload: installCanvasDragScrollGuard(),
     };
     lastDragAppliedRef.current = null;
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -809,6 +824,7 @@ export default function Home() {
     event.stopPropagation();
 
     const dragSnap = dragRef.current;
+    dragSnap?.scrollGuardUnload?.();
 
     if (!dragSnap?.element) {
       dragRef.current = null;
@@ -970,6 +986,7 @@ export default function Home() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
 
     try {
+      // Same API as magic-link; whether the mail shows digits is set in Supabase Dashboard → Authentication → Email → Magic Link template (add {{ .Token }}).
       const { error } = await supabase.auth.signInWithOtp({
         email: authEmail.trim(),
         options: {
@@ -996,7 +1013,11 @@ export default function Home() {
       }
 
       setAuthAwaitingCode(true);
-      setAuthMessage("MAGIC LINK SENT · USE CODE IN APP IF NO LINK");
+      setAuthMessage(
+        theme === "minimal"
+          ? "Email sent. If your message shows numbers, paste them below — that keeps you signed in inside this browser or home-screen app. If you only ever see a link, add {{ .Token }} to the Supabase Magic Link email template (Authentication → Email templates)."
+          : "EMAIL SENT · PASTE NUMERIC TOKEN BELOW WHEN SHOWN · NO DIGITS ⇒ SUPABASE → AUTH → MAIL TEMPLATE INCLUDE {{ .Token }}",
+      );
     } finally {
       setAuthRequestBusy(false);
     }
@@ -1153,8 +1174,8 @@ export default function Home() {
               <>
                 <p className="authOtpHint" id="otp-hint">
                   {theme === "minimal"
-                    ? "Magic links usually open Safari, not this app. Enter the verification code from the email here."
-                    : "MAGIC LINKS OPEN SAFARI · ENTER THE EMAIL CODE HERE TO SIGN IN INSIDE THIS APP"}
+                    ? "Prefer the numeric code in this box. Tapping the link in Mail often jumps to Safari instead of staying here."
+                    : "USE DIGITS WHEN PRESENT · MAIL LINK MAY OPEN EXTERNAL BROWSER · ADD {{ .Token }} SO EMAIL INCLUDES OTP"}
                 </p>
                 <input
                   className="authInput authInput--otp"
