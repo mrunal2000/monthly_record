@@ -174,11 +174,9 @@ export default function Home() {
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
   const [newFrameName, setNewFrameName] = useState("");
-  const [renameDraft, setRenameDraft] = useState<{ id: string; label: string; note: string } | null>(
-    null,
-  );
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
+  const titleStableRef = useRef<Record<string, string>>({});
   const dragRef = useRef<DragState | null>(null);
   const activeMonth = months[activeMonthIndex];
   const canEdit = Boolean(user);
@@ -387,26 +385,6 @@ export default function Home() {
     });
 
     setNewFrameName("");
-  }
-
-  function applyRename() {
-    if (!renameDraft || !canEdit) return;
-
-    const label = renameDraft.label.trim();
-    if (!label) return;
-
-    const nextLabel = label.toUpperCase();
-    void patchSupabaseCategoryLabels(renameDraft.id, nextLabel);
-
-    setCategories((prev) =>
-      prev.map((category) =>
-        category.id === renameDraft.id
-          ? { ...category, label: nextLabel, note: renameDraft.note.trim() }
-          : category,
-      ),
-    );
-
-    setRenameDraft(null);
   }
 
   function safeFileName(fileName: string) {
@@ -874,57 +852,78 @@ export default function Home() {
               <span className="frameRect">
                 <span className="frameContent" aria-hidden={!isActive}>
                   <span className="canvasHeader">
-                    <span>
-                      {renameDraft?.id === item.id ? (
-                        <span
-                          className="renameForm"
-                          onPointerDown={(event) => event.stopPropagation()}
-                        >
-                          <label className="srOnly" htmlFor={`rename-frame-${item.id}`}>
+                    <span
+                      className="frameHeadingBlock"
+                      onPointerDown={(event) => event.stopPropagation()}
+                    >
+                      {canEdit && isActive ? (
+                        <>
+                          <label className="srOnly" htmlFor={`frame-title-${item.id}`}>
                             Frame title
                           </label>
                           <input
-                            id={`rename-frame-${item.id}`}
-                            className="renameInput"
-                            type="text"
-                            value={renameDraft.label}
+                            id={`frame-title-${item.id}`}
+                            className="frameTitle frameTitleEditable"
+                            autoComplete="off"
+                            aria-label="Frame title"
+                            value={item.label}
+                            onFocus={() => {
+                              titleStableRef.current[item.id] = item.label;
+                            }}
                             onChange={(event) =>
-                              setRenameDraft((draft) =>
-                                draft && draft.id === item.id
-                                  ? { ...draft, label: event.target.value }
-                                  : draft,
+                              setCategories((prev) =>
+                                prev.map((c) =>
+                                  c.id === item.id ? { ...c, label: event.target.value } : c,
+                                ),
                               )
                             }
+                            onBlur={(event) => {
+                              let trimmed = event.target.value.trim();
+                              if (!trimmed) {
+                                const revert = titleStableRef.current[item.id] ?? "?";
+                                setCategories((prev) =>
+                                  prev.map((c) => (c.id === item.id ? { ...c, label: revert } : c)),
+                                );
+                                return;
+                              }
+                              const nextLabel = trimmed.toUpperCase();
+                              const prevLabel = (
+                                titleStableRef.current[item.id] ?? ""
+                              ).trim().toUpperCase();
+                              if (prevLabel !== nextLabel) {
+                                void patchSupabaseCategoryLabels(item.id, nextLabel);
+                              }
+                              setCategories((prev) =>
+                                prev.map((c) =>
+                                  c.id === item.id ? { ...c, label: nextLabel } : c,
+                                ),
+                              );
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                event.currentTarget.blur();
+                              }
+                            }}
                           />
-                          <label className="srOnly" htmlFor={`rename-note-${item.id}`}>
+                          <label className="srOnly" htmlFor={`frame-note-${item.id}`}>
                             Frame subtitle
                           </label>
                           <textarea
-                            id={`rename-note-${item.id}`}
-                            className="renameNoteInput"
+                            id={`frame-note-${item.id}`}
+                            className="frameNoteEditable"
                             rows={2}
-                            value={renameDraft.note}
+                            aria-label="Frame subtitle"
+                            value={item.note}
                             onChange={(event) =>
-                              setRenameDraft((draft) =>
-                                draft && draft.id === item.id
-                                  ? { ...draft, note: event.target.value }
-                                  : draft,
+                              setCategories((prev) =>
+                                prev.map((c) =>
+                                  c.id === item.id ? { ...c, note: event.target.value } : c,
+                                ),
                               )
                             }
                           />
-                          <span className="renameFormActions">
-                            <button className="renameSaveButton" type="button" onClick={applyRename}>
-                              SAVE
-                            </button>
-                            <button
-                              className="renameCancelButton"
-                              type="button"
-                              onClick={() => setRenameDraft(null)}
-                            >
-                              CANCEL
-                            </button>
-                          </span>
-                        </span>
+                        </>
                       ) : (
                         <>
                           <span className="frameTitle">{item.label}</span>
@@ -934,18 +933,6 @@ export default function Home() {
                     </span>
                     {canEdit ? (
                       <span className="canvasActions">
-                        {isActive && renameDraft?.id !== item.id ? (
-                          <button
-                            className="renameFrameButton"
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setRenameDraft({ id: item.id, label: item.label, note: item.note });
-                            }}
-                          >
-                            RENAME
-                          </button>
-                        ) : null}
                         {selectedImage ? (
                           <button
                             className="deleteSelectedButton"
