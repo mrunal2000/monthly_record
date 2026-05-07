@@ -521,6 +521,24 @@ body {
   color: var(--frame-color);
 }
 
+.addTextButton {
+  min-height: clamp(30px, 5vw, 38px);
+  border: 1px solid currentColor;
+  padding: 0 9px;
+  background: transparent;
+  color: var(--frame-text-color);
+  font: inherit;
+  font-size: 10px;
+  line-height: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.addTextButton:hover {
+  background: var(--frame-text-color);
+  color: var(--frame-color);
+}
+
 .addButton:hover {
   background: var(--frame-text-color);
   color: var(--frame-color);
@@ -583,6 +601,53 @@ body {
 .imageItem[data-selected="true"] .canvasImage {
   outline: 1px solid currentColor;
   outline-offset: 3px;
+}
+
+.imageItem[data-selected="true"] .canvasTextInput,
+.imageItem[data-selected="true"] .canvasTextReadonly,
+.imageItem[data-selected="true"] .canvasTextTapToEdit {
+  outline: 1px solid currentColor;
+  outline-offset: 3px;
+}
+
+.canvasTextItem {
+  cursor: grab;
+}
+
+.canvasTextInput,
+.canvasTextReadonly,
+.canvasTextTapToEdit {
+  box-sizing: border-box;
+  display: block;
+  width: 100%;
+  margin: 0;
+  border: 1px dashed currentColor;
+  padding: 6px 8px;
+  background: rgb(255 255 255 / 0.06);
+  color: inherit;
+  font: inherit;
+  font-size: clamp(11px, 2vw, 13px);
+  line-height: 1.45;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.canvasTextTapToEdit {
+  cursor: text;
+  font-family: inherit;
+}
+
+.canvasTextInput {
+  min-height: 4.75rem;
+  border-style: solid;
+  background: rgb(255 255 255 / 0.1);
+  resize: vertical;
+}
+
+.canvasTextReadonly {
+  user-select: none;
+  pointer-events: none;
 }
 
 .imageControls {
@@ -665,7 +730,8 @@ body {
   .addButton,
   .monthButton,
   .authButton,
-  .deleteSelectedButton {
+  .deleteSelectedButton,
+  .addTextButton {
     animation: none;
     transition: none;
   }
