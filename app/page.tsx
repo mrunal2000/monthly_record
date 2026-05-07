@@ -131,7 +131,7 @@ function installCanvasDragScrollGuard(): () => void {
 function installCanvasWindowPointerRouting(
   pointerId: number,
   onMove: (clientX: number, clientY: number) => void,
-  onEnd: (clientX: number, clientY: number) => void,
+  onEnd: (clientX: number, clientY: number, cancelled: boolean) => void,
 ): () => void {
   if (typeof window === "undefined") return () => {};
   const opts = { capture: true } as const;
@@ -149,7 +149,8 @@ function installCanvasWindowPointerRouting(
     if (e.pointerType === "touch") {
       e.preventDefault();
     }
-    onEnd(e.clientX, e.clientY);
+    const cancelled = evt.type === "pointercancel";
+    onEnd(e.clientX, e.clientY, cancelled);
   };
   window.addEventListener("pointermove", move, opts);
   window.addEventListener("pointerup", end, opts);
@@ -221,6 +222,14 @@ function formatMinimalTimestamp(date: Date) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
+}
+
+/** Keep pointer math inside the canvas so a finger dragged off-screen does not map to 100% width / wild %. */
+function clampClientPointToCanvas(clientX: number, clientY: number, canvas: DOMRect) {
+  return {
+    cx: clamp(clientX, canvas.left, canvas.right),
+    cy: clamp(clientY, canvas.top, canvas.bottom),
+  };
 }
 
 function getCurrentMonthIndex() {
@@ -781,7 +790,7 @@ export default function Home() {
     const windowPointerUnload = installCanvasWindowPointerRouting(
       pointerId,
       updateDragGeometry,
-      stopDragAt,
+      (cx, cy, cancelled) => stopDragAt(cx, cy, cancelled),
     );
 
     dragRef.current = {
@@ -813,6 +822,9 @@ export default function Home() {
     const canvasEl = imageItem.closest(".imageCanvas");
     if (!(canvasEl instanceof HTMLElement)) return;
 
+    const image = imagesByBoardRef.current[imageKey]?.find((entry) => entry.id === imageId);
+    if (!image) return;
+
     if (event.pointerType === "touch") {
       event.preventDefault();
     }
@@ -825,7 +837,7 @@ export default function Home() {
     const windowPointerUnload = installCanvasWindowPointerRouting(
       pointerId,
       updateDragGeometry,
-      stopDragAt,
+      (cx, cy, cancelled) => stopDragAt(cx, cy, cancelled),
     );
 
     dragRef.current = {
@@ -858,9 +870,12 @@ export default function Home() {
     if (!image) return;
 
     const canvasRect = canvasEl.getBoundingClientRect();
+    if (canvasRect.width < 1 || canvasRect.height < 1) return;
+
+    const { cx, cy } = clampClientPointToCanvas(clientX, clientY, canvasRect);
     const itemRect = drag.mode === "move" ? drag.element.getBoundingClientRect() : null;
 
-    const next = getUpdatedImage(image, clientX, clientY, canvasRect, drag, itemRect);
+    const next = getUpdatedImage(image, cx, cy, canvasRect, drag, itemRect);
 
     lastDragAppliedRef.current = {
       imageKey: drag.imageKey,
@@ -878,7 +893,7 @@ export default function Home() {
     }
   }
 
-  function stopDragAt(clientX: number, clientY: number) {
+  function stopDragAt(clientX: number, clientY: number, cancelled = false) {
     const dragSnap = dragRef.current;
     if (!dragSnap) return;
 
@@ -904,6 +919,15 @@ export default function Home() {
       dragSnap.element.releasePointerCapture(dragSnap.pointerId);
     } catch {
       /* noop */
+    }
+
+    if (cancelled) {
+      dragSnap.element.style.removeProperty("left");
+      dragSnap.element.style.removeProperty("top");
+      dragSnap.element.style.removeProperty("width");
+      dragRef.current = null;
+      lastDragAppliedRef.current = null;
+      return;
     }
 
     updateDragGeometry(clientX, clientY);
@@ -936,6 +960,21 @@ export default function Home() {
       y: last.y,
       width: last.width,
     };
+
+    const saneGeom =
+      Number.isFinite(patchedImage.x) &&
+      Number.isFinite(patchedImage.y) &&
+      Number.isFinite(patchedImage.width) &&
+      patchedImage.width >= 8 &&
+      patchedImage.width <= 100 &&
+      patchedImage.x >= -0.01 &&
+      patchedImage.x <= 100.01 &&
+      patchedImage.y >= -0.01 &&
+      patchedImage.y <= 100.01;
+
+    if (!saneGeom) {
+      return;
+    }
 
     setImagesByBoard((current) => {
       const list = current[last.imageKey] ?? [];
@@ -976,16 +1015,30 @@ export default function Home() {
     drag: DragState,
     itemRect: DOMRect | null,
   ) {
+    if (canvasRect.width < 1 || canvasRect.height < 1) {
+      return { ...image };
+    }
+
     if (drag.mode === "resize") {
       const pointerX = ((clientX - canvasRect.left) / canvasRect.width) * 100;
+      if (!Number.isFinite(pointerX)) {
+        return { ...image };
+      }
       const nextWidth = pointerX - image.x;
-      return { ...image, width: clamp(nextWidth, 16, Math.max(16, 100 - image.x)) };
+      const w = clamp(nextWidth, 16, Math.max(16, 100 - image.x));
+      if (!Number.isFinite(w)) {
+        return { ...image };
+      }
+      return { ...image, width: w };
     }
 
     const itemWidth = itemRect?.width ?? (image.width / 100) * canvasRect.width;
     const itemHeight = itemRect?.height ?? 0;
     const x = ((clientX - canvasRect.left - drag.offsetX) / canvasRect.width) * 100;
     const y = ((clientY - canvasRect.top - drag.offsetY) / canvasRect.height) * 100;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return { ...image };
+    }
     const maxX = ((canvasRect.width - itemWidth) / canvasRect.width) * 100;
     const maxY = ((canvasRect.height - itemHeight) / canvasRect.height) * 100;
 
