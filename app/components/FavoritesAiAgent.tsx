@@ -358,23 +358,39 @@ export default function FavoritesAiAgent({
             </div>
             <button
               type="button"
-              className="aiAgentPanel__close"
-              aria-label="Close"
-              onClick={() => setPanelOpen(false)}
+              className="aiAgentPanel__refresh"
+              aria-label="Clear conversation"
+              title="Clear conversation"
+              disabled={busy}
+              onClick={() => {
+                setMessages([]);
+                setErrorBanner(null);
+                setDraft("");
+              }}
             >
-              ×
+              <svg
+                className="aiAgentPanel__refreshIcon"
+                width="18"
+                height="18"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden
+              >
+                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+                <path d="M21 3v5h-5" />
+                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+                <path d="M3 16v5h5" />
+              </svg>
             </button>
           </header>
 
           {errorBanner ? <p className="aiAgentPanel__error">{errorBanner}</p> : null}
 
           <div className="aiAgentPanel__thread" role="log" aria-live="polite">
-            {messages.length === 0 ? (
-              <p className="aiAgentPanel__empty">
-                Try: &ldquo;What book should I read next based on my recent favorites?&rdquo; or
-                &ldquo;What patterns do you see in my wishlist?&rdquo;
-              </p>
-            ) : null}
             {messages.map((m, i) => (
               <div
                 key={`${m.role}-${i}-${String(m.content).slice(0, 16)}`}

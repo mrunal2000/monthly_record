@@ -1886,21 +1886,33 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   max-width: 300px;
 }
 
-.aiAgentPanel__close {
+.aiAgentPanel__refresh {
   flex-shrink: 0;
+  box-sizing: border-box;
   width: 32px;
   height: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--ink);
   background: var(--bg);
   color: var(--ink);
-  font-size: 20px;
-  line-height: 1;
   cursor: pointer;
 }
 
-.aiAgentPanel__close:hover {
+.aiAgentPanel__refresh:hover:not(:disabled) {
   background: var(--ink);
   color: var(--bg);
+}
+
+.aiAgentPanel__refresh:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.aiAgentPanel__refreshIcon {
+  display: block;
 }
 
 .aiAgentPanel__error {
@@ -1919,13 +1931,6 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.aiAgentPanel__empty {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
-  opacity: 0.72;
 }
 
 .aiAgentPanel__bubble {
@@ -2134,7 +2139,7 @@ html[data-theme="minimal"] .aiAgentPanel__sub {
   font-size: 12px;
 }
 
-html[data-theme="minimal"] .aiAgentPanel__close,
+html[data-theme="minimal"] .aiAgentPanel__refresh,
 html[data-theme="minimal"] .aiAgentPanel__send {
   border-radius: 8px;
 }
