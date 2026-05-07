@@ -140,12 +140,13 @@ body {
 
 .authProfileMobile {
   display: none;
+  align-items: center;
 }
 
 .authProfileTrigger {
   box-sizing: border-box;
-  width: 34px;
-  height: 34px;
+  width: 28px;
+  height: 28px;
   margin: 0;
   padding: 0;
   display: grid;
@@ -1254,7 +1255,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   .page--signedIn .topTimestamp {
-    right: calc(max(10px, env(safe-area-inset-right)) + 44px);
+    right: calc(max(10px, env(safe-area-inset-right)) + 38px);
     max-width: min(46vw, calc(100vw - 200px));
   }
 
@@ -1287,15 +1288,17 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   .authProfileMobile {
-    display: block;
+    display: flex;
+    align-items: center;
     position: relative;
     height: 100%;
+    min-height: var(--top-frame-height);
     pointer-events: auto;
   }
 
   .authProfileTrigger {
-    width: 32px;
-    height: 32px;
+    width: 26px;
+    height: 26px;
     touch-action: manipulation;
   }
 

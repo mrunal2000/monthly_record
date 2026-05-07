@@ -244,7 +244,7 @@ function LiveClock({ theme }: LiveClockProps) {
 
 function ProfileMenuGlyph() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden stroke="currentColor" strokeWidth="1.75">
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden stroke="currentColor" strokeWidth="1.75">
       <circle cx="12" cy="8" r="4" strokeLinecap="round" />
       <path strokeLinecap="round" d="M5 21c1.76-5.25 13.33-5.06 14 0" />
     </svg>
