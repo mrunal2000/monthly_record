@@ -1194,7 +1194,7 @@ export default function Home() {
     const origin = typeof window !== "undefined" ? window.location.origin : "";
 
     try {
-      // Same API as magic-link; whether the mail shows digits is set in Supabase Dashboard → Authentication → Email → Magic Link template (add {{ .Token }}).
+      // Magic link email can include OTP digits if Magic Link template in Supabase includes {{ .Token }}.
       const { error } = await supabase.auth.signInWithOtp({
         email: authEmail.trim(),
         options: {
@@ -1208,8 +1208,8 @@ export default function Home() {
           otpSendCooldownUntilRef.current = Date.now() + 65_000;
           setAuthMessage(
             theme === "minimal"
-              ? "Too many sign-in emails (Supabase limit). Wait about a minute, then try again. You can raise the limit in the Supabase dashboard under Authentication → Rate limits."
-              : "EMAIL RATE LIMIT · WAIT ~1 MIN · SUPABASE DASHBOARD → AUTH → RATE LIMITS",
+              ? "Too many sign-in emails. Wait about a minute and try again."
+              : "TOO MANY EMAILS · WAIT ~1 MIN · TRY AGAIN",
           );
         } else {
           const short =
@@ -1223,8 +1223,8 @@ export default function Home() {
       setAuthAwaitingCode(true);
       setAuthMessage(
         theme === "minimal"
-          ? "Email sent. If your message shows numbers, paste them below — that keeps you signed in inside this browser or home-screen app. If you only ever see a link, add {{ .Token }} to the Supabase Magic Link email template (Authentication → Email templates)."
-          : "EMAIL SENT · PASTE NUMERIC TOKEN BELOW WHEN SHOWN · NO DIGITS ⇒ SUPABASE → AUTH → MAIL TEMPLATE INCLUDE {{ .Token }}",
+          ? "Check your email and enter the code below."
+          : "CHECK EMAIL · ENTER THE CODE BELOW",
       );
     } finally {
       setAuthRequestBusy(false);
@@ -1442,22 +1442,21 @@ export default function Home() {
             />
             {authAwaitingCode ? (
               <>
-                <p className="authOtpHint" id="otp-hint">
-                  {theme === "minimal"
-                    ? "Prefer the numeric code in this box. Tapping the link in Mail often jumps to Safari instead of staying here."
-                    : "USE DIGITS WHEN PRESENT · MAIL LINK MAY OPEN EXTERNAL BROWSER · ADD {{ .Token }} SO EMAIL INCLUDES OTP"}
-                </p>
                 <input
                   className="authInput authInput--otp"
                   type="text"
-                  placeholder={theme === "minimal" ? "code from email" : "CODE FROM EMAIL"}
+                  placeholder={theme === "minimal" ? "Code from email" : "ENTER CODE"}
                   value={authOtp}
                   onChange={(event) => setAuthOtp(event.target.value)}
                   autoComplete="one-time-code"
                   inputMode="numeric"
                   pattern="[0-9]*"
                   maxLength={12}
-                  aria-labelledby="otp-hint"
+                  aria-label={
+                    theme === "minimal"
+                      ? "Verification code from your email"
+                      : "Verification code from email"
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
@@ -1470,7 +1469,7 @@ export default function Home() {
                   type="submit"
                   disabled={authRequestBusy || !authOtp.trim()}
                 >
-                  {theme === "minimal" ? "Verify code" : "VERIFY CODE"}
+                  {theme === "minimal" ? "Continue" : "CONTINUE"}
                 </button>
               </>
             ) : (
