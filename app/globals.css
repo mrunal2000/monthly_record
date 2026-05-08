@@ -346,6 +346,42 @@ body {
   cursor: pointer;
 }
 
+/* Entry to sign-in flow when the URL has no `?edit=1` (e.g. home-screen bookmark). */
+.authEnterEditButton {
+  box-sizing: border-box;
+  position: absolute;
+  top: 50%;
+  left: clamp(200px, 28vw, 300px);
+  z-index: 4;
+  transform: translateY(-50%);
+  margin: 0;
+  padding: 0 10px;
+  min-height: 26px;
+  border: 1px solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.authEnterEditButton:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+html[data-theme="minimal"] .authEnterEditButton {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  border-radius: 6px;
+}
+
 .localEditHint {
   font-size: 9px;
   line-height: 1.25;
@@ -2494,6 +2530,15 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     z-index: 1;
     height: var(--top-frame-height);
     flex-shrink: 0;
+  }
+
+  .mobileAppChrome__topBand .authEnterEditButton {
+    position: relative;
+    top: auto;
+    left: auto;
+    transform: none;
+    flex-shrink: 0;
+    align-self: center;
   }
 
   .mobileAppChrome__topBand .topTimestamp {

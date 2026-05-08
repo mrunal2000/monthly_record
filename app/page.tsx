@@ -2518,6 +2518,26 @@ export default function Home() {
         return;
       }
 
+      /* Some mobile WebViews deliver SIGNED_IN late; read storage-backed session immediately. */
+      const {
+        data: { session },
+        error: sessionErr,
+      } = await supabase.auth.getSession();
+      if (sessionErr) {
+        console.error("Could not read session after verify:", sessionErr.message);
+      }
+      setUser(session?.user ?? null);
+      if (session?.user) {
+        const url = new URL(window.location.href);
+        if (url.searchParams.get("edit") !== "1") {
+          url.searchParams.set("edit", "1");
+          const q = url.searchParams.toString();
+          window.history.replaceState({}, "", `${url.pathname}?${q}${url.hash}`);
+          setEditMode(true);
+        }
+        setAuthMessage(theme === "minimal" ? "Signed in." : "SIGNED IN");
+      }
+
       setAuthAwaitingCode(false);
       setAuthOtp("");
     } finally {
@@ -2551,6 +2571,15 @@ export default function Home() {
     const search = url.searchParams.toString();
     window.history.replaceState({}, "", `${url.pathname}${search ? `?${search}` : ""}`);
     setEditMode(false);
+  }
+
+  /** Bookmarks often omit `?edit=1`; without it the sign-in UI never mounts (view-only). */
+  function enterEditFlow() {
+    const url = new URL(window.location.href);
+    url.searchParams.set("edit", "1");
+    const search = url.searchParams.toString();
+    window.history.replaceState({}, "", `${url.pathname}?${search}${url.hash}`);
+    setEditMode(true);
   }
 
   return (
@@ -2597,6 +2626,16 @@ export default function Home() {
             <span className="localEditHint" role="status">
               {theme === "minimal" ? "Local · not synced" : "LOCAL · NOT SYNCED"}
             </span>
+          ) : null}
+          {supabase && !user && !editMode ? (
+            <button
+              type="button"
+              className="authEnterEditButton"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={() => enterEditFlow()}
+            >
+              {theme === "minimal" ? "Sign in" : "SIGN IN"}
+            </button>
           ) : null}
           <LiveClock theme={theme} />
           {user ? (
