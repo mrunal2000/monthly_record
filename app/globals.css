@@ -346,6 +346,36 @@ body {
   cursor: pointer;
 }
 
+.localEditHint {
+  font-size: 9px;
+  line-height: 1.25;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+@media (min-width: 768px) {
+  .localEditHint {
+    position: absolute;
+    top: 0;
+    left: clamp(148px, 15vw, 220px);
+    z-index: 3;
+    display: flex;
+    align-items: center;
+    height: var(--top-frame-height);
+    max-width: min(240px, 32vw);
+    pointer-events: none;
+  }
+}
+
+@media (max-width: 767px) {
+  .mobileAppChrome__topBand .localEditHint {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: min(104px, 28vw);
+  }
+}
+
 .monthRail {
   position: absolute;
   top: var(--top-frame-height);
@@ -687,6 +717,7 @@ body {
 }
 
 .addButton {
+  box-sizing: border-box;
   display: grid;
   width: clamp(38px, 6vw, 48px);
   height: clamp(38px, 6vw, 48px);
@@ -694,7 +725,11 @@ body {
   place-items: center;
   border: 1px solid currentColor;
   border-radius: 999px;
+  padding: 0;
+  margin: 0;
+  background: transparent;
   color: var(--frame-text-color);
+  font: inherit;
   font-size: 30px;
   line-height: 1;
   cursor: pointer;
@@ -776,16 +811,6 @@ body {
 
 .textBoardSurface--links .linkComposer {
   scrollbar-gutter: stable;
-}
-
-.textBoardEmpty {
-  margin: clamp(18px, 4vw, 28px) auto;
-  padding: 0 clamp(14px, 3vw, 22px);
-  max-width: 38ch;
-  font-size: clamp(11px, 1.45vw, 13px);
-  line-height: 1.45;
-  text-align: center;
-  opacity: 0.72;
 }
 
 .linkComposer,
@@ -875,7 +900,8 @@ body {
   position: relative;
   display: grid;
   gap: 6px;
-  padding: clamp(11px, 2vw, 14px) clamp(12px, 2vw, 16px);
+  padding: clamp(11px, 2vw, 14px) max(clamp(12px, 2vw, 16px), 38px)
+    clamp(11px, 2vw, 14px) clamp(12px, 2vw, 16px);
   border: 1px solid rgb(255 255 255 / 0.35);
   background: rgb(255 255 255 / 0.1);
 }
@@ -893,6 +919,7 @@ body {
 }
 
 .linkCardHost {
+  font-family: var(--font-chrome, var(--font-body));
   font-size: clamp(10px, 1.15vw, 11px);
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -901,14 +928,15 @@ body {
 
 .linkCardTitle {
   font-family: var(--font-frame-display, var(--font-body));
-  font-size: clamp(16px, 2.8vw, 22px);
+  font-size: clamp(13px, 1.85vw, 16px);
   font-weight: 600;
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  line-height: 1.3;
+  letter-spacing: -0.03em;
   word-break: break-word;
 }
 
 .linkCardUrl {
+  font-family: var(--font-body);
   font-size: clamp(10px, 1.25vw, 11px);
   line-height: 1.35;
   opacity: 0.62;
@@ -917,13 +945,13 @@ body {
 
 .linkCardNote {
   margin: 0;
+  font-family: var(--font-body);
   font-size: clamp(11px, 1.35vw, 12px);
   line-height: 1.4;
   opacity: 0.85;
 }
 
-.linkCardRemove,
-.quoteCardRemove {
+.linkCardRemove {
   position: absolute;
   top: 6px;
   right: 6px;
@@ -931,8 +959,26 @@ body {
   height: 28px;
   display: grid;
   place-items: center;
+  border: 1px solid #000;
+  padding: 0;
+  background: #fff;
+  color: #000;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.quoteCardRemove {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
   border: 1px solid currentColor;
   padding: 0;
+  margin: 0;
   background: var(--frame-color);
   color: var(--frame-text-color);
   font: inherit;
@@ -943,44 +989,57 @@ body {
 
 .quoteCard {
   position: relative;
-  padding: clamp(14px, 2.4vw, 20px) clamp(16px, 2.8vw, 24px) clamp(14px, 2.4vw, 20px)
-    clamp(22px, 4vw, 40px);
-  border: 1px solid rgb(255 255 255 / 0.3);
-  background: rgb(255 255 255 / 0.08);
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  padding: clamp(4px, 1vw, 8px);
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
+.quoteCardRail {
+  flex-shrink: 0;
+  width: 2px;
+  min-height: 42px;
+  margin-top: 2px;
+  align-self: stretch;
+  background: color-mix(in srgb, currentColor 32%, transparent);
+}
+
+.quoteCardMain {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .quoteCardBody {
   margin: 0;
-  font-family: var(--font-body);
-  font-size: clamp(14px, 2.1vw, 17px);
-  font-style: italic;
-  line-height: 1.55;
-  letter-spacing: 0.01em;
-}
-
-.quoteCardBody::before {
-  content: "“";
-  margin-left: -0.45em;
-  margin-right: 0.08em;
-  font-size: 1.15em;
-  opacity: 0.45;
-}
-
-.quoteCardBody::after {
-  content: "”";
-  margin-left: 0.06em;
-  font-size: 1.15em;
-  opacity: 0.45;
+  padding: 0;
+  border: none;
+  font-family: var(--font-frame-display, var(--font-body));
+  font-size: 14px;
+  font-weight: 600;
+  font-style: normal;
+  line-height: calc(18 / 14);
+  letter-spacing: -0.03em;
+  color: #000;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .quoteCardSource {
   display: block;
-  margin-top: 10px;
-  font-size: clamp(11px, 1.35vw, 12px);
+  margin-top: 0;
+  font-family: var(--font-chrome, var(--font-body));
+  font-size: clamp(10px, 1.25vw, 11px);
   font-style: normal;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
-  opacity: 0.72;
+  opacity: 0.55;
 }
 
 .quoteCardSource::before {
@@ -1112,20 +1171,26 @@ html[data-theme="paper"] .page::before {
 }
 
 html[data-theme="paper"] .frameTitle,
-html[data-theme="paper"] .frameTitle.frameTitleEditable {
+html[data-theme="paper"] .frameTitle.frameTitleEditable,
+html[data-theme="paper"] .quoteCardBody,
+html[data-theme="paper"] .linkCardTitle {
   font-weight: 500;
   letter-spacing: 0.03em;
   font-variant-numeric: oldstyle-nums;
 }
 
 html[data-theme="brutalist"] .frameTitle,
-html[data-theme="brutalist"] .frameTitle.frameTitleEditable {
+html[data-theme="brutalist"] .frameTitle.frameTitleEditable,
+html[data-theme="brutalist"] .quoteCardBody,
+html[data-theme="brutalist"] .linkCardTitle {
   font-weight: 700;
   letter-spacing: -0.045em;
 }
 
 html[data-theme="minimal"] .frameTitle,
-html[data-theme="minimal"] .frameTitle.frameTitleEditable {
+html[data-theme="minimal"] .frameTitle.frameTitleEditable,
+html[data-theme="minimal"] .quoteCardBody,
+html[data-theme="minimal"] .linkCardTitle {
   font-weight: 600;
   letter-spacing: -0.02em;
   color: var(--ink);

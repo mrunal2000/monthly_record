@@ -58,6 +58,10 @@ const CATEGORIES_STORAGE_KEY = "monthly-record-categories";
 const LINKS_STORAGE_KEY = "monthly-record-board-links";
 const QUOTES_STORAGE_KEY = "monthly-record-board-quotes";
 
+/** When `"1"`, allow editing without signing in; data stays in this browser (links/quotes persist; images use blob URLs until you sign in). Do not enable on a public production deployment. */
+const ALLOW_LOCAL_EDIT_WITHOUT_AUTH =
+  process.env.NEXT_PUBLIC_ALLOW_LOCAL_EDIT_WITHOUT_AUTH === "1";
+
 const DEFAULT_CATEGORIES: Category[] = [
   {
     id: "media",
@@ -96,8 +100,8 @@ const DEFAULT_CATEGORIES: Category[] = [
   },
   {
     id: "rabbit-holes",
-    label: "RABBIT HOLES",
-    note: "Save links worth falling into — essays, clips, repos, rabbit holes.",
+    label: "Links",
+    note: "Save URLs to revisit — articles, threads, repos, and clips.",
     color: "var(--category-rabbit)",
     textColor: "var(--category-on-dark)",
     variant: "links",
@@ -111,6 +115,25 @@ const DEFAULT_CATEGORIES: Category[] = [
     variant: "quotes",
   },
 ];
+
+/** Stored titles from older defaults before the links frame used sentence case. */
+const LEGACY_RABBIT_HOLES_LABELS = new Set([
+  "RABBIT HOLES",
+  "Rabbit holes",
+  "Rabbit Holes",
+  "rabbit holes",
+  "LINKS",
+]);
+
+function upgradeLegacyLinksFrameCategories(categories: Category[]): Category[] {
+  const def = DEFAULT_CATEGORIES.find((c) => c.id === "rabbit-holes");
+  if (!def) return categories;
+  return categories.map((cat) => {
+    if (cat.id !== "rabbit-holes") return cat;
+    if (!LEGACY_RABBIT_HOLES_LABELS.has(cat.label)) return cat;
+    return { ...cat, label: def.label, note: def.note };
+  });
+}
 
 type CanvasImage = {
   id: string;
@@ -232,6 +255,14 @@ function formatMinimalSentenceCase(label: string) {
   const t = label.trim();
   if (!t) return t;
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
+}
+
+/** Paper / brutalist default to ALL CAPS on blur; links board keeps sentence case. */
+function normalizeFrameTitleOnBlur(raw: string, theme: ThemeName, categoryId: string) {
+  const t = raw.trim();
+  if (!t) return t;
+  if (theme === "minimal" || categoryId === "rabbit-holes") return formatMinimalSentenceCase(t);
+  return t.toUpperCase();
 }
 
 /** Timestamp for minimal: mixed case (not all-caps), lowercase am/pm. */
@@ -498,6 +529,8 @@ export default function Home() {
   const [textBoardsHydrated, setTextBoardsHydrated] = useState(false);
   const [linkDraft, setLinkDraft] = useState({ url: "", title: "", note: "" });
   const [quoteDraft, setQuoteDraft] = useState({ text: "", source: "" });
+  const [linkComposerOpen, setLinkComposerOpen] = useState(false);
+  const [quoteComposerOpen, setQuoteComposerOpen] = useState(false);
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
@@ -513,7 +546,7 @@ export default function Home() {
     width: number;
   } | null>(null);
   const activeMonth = months[activeMonthIndex];
-  const canEdit = Boolean(user);
+  const canEdit = Boolean(user) || ALLOW_LOCAL_EDIT_WITHOUT_AUTH;
   const wideLayout = useWideLayout(768);
 
   const pastMonthBoardImageCounts = useMemo(
@@ -664,7 +697,7 @@ export default function Home() {
             });
           }
         }
-        setCategories(next);
+        setCategories(upgradeLegacyLinksFrameCategories(next));
       }
     } catch {
       /* ignore */
@@ -721,6 +754,15 @@ export default function Home() {
         return;
       }
 
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (ALLOW_LOCAL_EDIT_WITHOUT_AUTH && !session?.user) {
+        setSaveStatus("LOCAL ONLY");
+        return;
+      }
+
       const { data, error } = await supabase
         .from(FAVORITES_TABLE)
         .select("id, board_key, month_id, category_index, category_label, image_url, storage_path, x, y, width, rotation")
@@ -760,7 +802,7 @@ export default function Home() {
     }
 
     void loadFavorites();
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     const lsLinks = parseLinksFromStorage(window.localStorage.getItem(LINKS_STORAGE_KEY));
@@ -784,6 +826,12 @@ export default function Home() {
     if (!supabase) return;
 
     void (async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (ALLOW_LOCAL_EDIT_WITHOUT_AUTH && !session?.user) return;
+
       const { data, error } = await supabase
         .from(BOARD_TEXT_TABLE)
         .select("id, board_key, kind, payload")
@@ -827,11 +875,13 @@ export default function Home() {
       setLinksByBoard((prev) => mergeTextBoardsById(prev, remoteLinks));
       setQuotesByBoard((prev) => mergeTextBoardsById(prev, remoteQuotes));
     })();
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
     setLinkDraft({ url: "", title: "", note: "" });
     setQuoteDraft({ text: "", source: "" });
+    setLinkComposerOpen(false);
+    setQuoteComposerOpen(false);
   }, [activeIndex, activeMonthIndex]);
 
   function boardKey(categoryId: string, monthIndex = activeMonthIndex) {
@@ -903,7 +953,7 @@ export default function Home() {
       );
     }
 
-    if (!supabase) {
+    if (!supabase || !user) {
       return {
         src: URL.createObjectURL(uploadFile),
         storagePath: undefined,
@@ -1485,6 +1535,7 @@ export default function Home() {
       [imageKey]: [...(current[imageKey] ?? []), entry],
     }));
     setLinkDraft({ url: "", title: "", note: "" });
+    setLinkComposerOpen(false);
 
     if (!supabase || !user) {
       setSaveStatus("LOCAL ONLY");
@@ -1515,6 +1566,7 @@ export default function Home() {
       [imageKey]: [...(current[imageKey] ?? []), entry],
     }));
     setQuoteDraft({ text: "", source: "" });
+    setQuoteComposerOpen(false);
 
     if (!supabase || !user) {
       setSaveStatus("LOCAL ONLY");
@@ -1642,6 +1694,8 @@ export default function Home() {
     setAuthOtp("");
     setAuthRequestBusy(false);
     otpSendCooldownUntilRef.current = 0;
+    setImagesByBoard({});
+    imagesByBoardRef.current = {};
   }
 
   function leaveEditFlow() {
@@ -1654,7 +1708,12 @@ export default function Home() {
 
   return (
     <main
-      className={["page", user && "page--signedIn", canEdit && wideLayout && "page--desktopEditChrome"]
+      className={[
+        "page",
+        user && "page--signedIn",
+        canEdit && wideLayout && "page--desktopEditChrome",
+        ALLOW_LOCAL_EDIT_WITHOUT_AUTH && !user ? "page--localEditWithoutAuth" : "",
+      ]
         .filter(Boolean)
         .join(" ")}
       onPointerDown={clearCanvasSelection}
@@ -1686,6 +1745,11 @@ export default function Home() {
               ))}
             </select>
           </label>
+          {ALLOW_LOCAL_EDIT_WITHOUT_AUTH && !user ? (
+            <span className="localEditHint" role="status">
+              {theme === "minimal" ? "Local · not synced" : "LOCAL · NOT SYNCED"}
+            </span>
+          ) : null}
           <LiveClock theme={theme} />
           {user ? (
             <div className="authSignedIn" onPointerDown={(event) => event.stopPropagation()}>
@@ -1977,17 +2041,11 @@ export default function Home() {
                                 );
                                 return;
                               }
-                              const nextLabel =
-                                theme === "minimal"
-                                  ? formatMinimalSentenceCase(trimmed)
-                                  : trimmed.toUpperCase();
+                              const nextLabel = normalizeFrameTitleOnBlur(trimmed, theme, item.id);
                               const prevRaw = (
                                 titleStableRef.current[item.id] ?? ""
                               ).trim();
-                              const prevCompared =
-                                theme === "minimal"
-                                  ? formatMinimalSentenceCase(prevRaw)
-                                  : prevRaw.toUpperCase();
+                              const prevCompared = normalizeFrameTitleOnBlur(prevRaw, theme, item.id);
                               if (prevCompared !== nextLabel) {
                                 void patchSupabaseCategoryLabels(item.id, nextLabel);
                               }
@@ -2069,6 +2127,74 @@ export default function Home() {
                             onChange={(event) => addImages(event, item.id)}
                           />
                         </label>
+                      </span>
+                    ) : canEdit && variant === "links" && isActive ? (
+                      <span className="canvasActions">
+                        {linkComposerOpen ? (
+                          <button
+                            className="deleteSelectedButton"
+                            type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setLinkComposerOpen(false);
+                              setLinkDraft({ url: "", title: "", note: "" });
+                            }}
+                          >
+                            {theme === "minimal" ? "Cancel" : "CANCEL"}
+                          </button>
+                        ) : (
+                          <button
+                            className="addButton"
+                            type="button"
+                            aria-label={
+                              theme === "minimal"
+                                ? `Add link to ${formatMinimalSentenceCase(item.label)}`
+                                : `Add link to ${item.label}`
+                            }
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setLinkComposerOpen(true);
+                            }}
+                          >
+                            <span aria-hidden="true">+</span>
+                          </button>
+                        )}
+                      </span>
+                    ) : canEdit && variant === "quotes" && isActive ? (
+                      <span className="canvasActions">
+                        {quoteComposerOpen ? (
+                          <button
+                            className="deleteSelectedButton"
+                            type="button"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setQuoteComposerOpen(false);
+                              setQuoteDraft({ text: "", source: "" });
+                            }}
+                          >
+                            {theme === "minimal" ? "Cancel" : "CANCEL"}
+                          </button>
+                        ) : (
+                          <button
+                            className="addButton"
+                            type="button"
+                            aria-label={
+                              theme === "minimal"
+                                ? `Add quote to ${formatMinimalSentenceCase(item.label)}`
+                                : `Add quote to ${item.label}`
+                            }
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setQuoteComposerOpen(true);
+                            }}
+                          >
+                            <span aria-hidden="true">+</span>
+                          </button>
+                        )}
                       </span>
                     ) : null}
                   </span>
@@ -2154,7 +2280,7 @@ export default function Home() {
                       className="textBoardSurface textBoardSurface--links"
                       onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
                     >
-                      {canEdit && isActive ? (
+                      {canEdit && isActive && linkComposerOpen ? (
                         <form
                           className="linkComposer"
                           onPointerDown={(event) => event.stopPropagation()}
@@ -2209,13 +2335,7 @@ export default function Home() {
                           </button>
                         </form>
                       ) : null}
-                      {boardLinks.length === 0 ? (
-                        <p className="textBoardEmpty">
-                          {theme === "minimal"
-                            ? "No links saved for this month yet."
-                            : "NO LINKS YET FOR THIS MONTH."}
-                        </p>
-                      ) : (
+                      {boardLinks.length > 0 ? (
                         <ul className="linkCardList">
                           {boardLinks.map((entry) => (
                             <li key={entry.id} className="linkCard">
@@ -2252,14 +2372,14 @@ export default function Home() {
                             </li>
                           ))}
                         </ul>
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <div
                       className="textBoardSurface textBoardSurface--quotes"
                       onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
                     >
-                      {canEdit && isActive ? (
+                      {canEdit && isActive && quoteComposerOpen ? (
                         <form
                           className="quoteComposer"
                           onPointerDown={(event) => event.stopPropagation()}
@@ -2303,20 +2423,17 @@ export default function Home() {
                           </button>
                         </form>
                       ) : null}
-                      {boardQuotesList.length === 0 ? (
-                        <p className="textBoardEmpty">
-                          {theme === "minimal"
-                            ? "No quotes saved for this month yet."
-                            : "NO QUOTES YET FOR THIS MONTH."}
-                        </p>
-                      ) : (
+                      {boardQuotesList.length > 0 ? (
                         <ul className="quoteCardList">
                           {boardQuotesList.map((entry) => (
                             <li key={entry.id} className="quoteCard">
-                              <blockquote className="quoteCardBody">{entry.text}</blockquote>
-                              {entry.source.trim() ? (
-                                <cite className="quoteCardSource">{entry.source}</cite>
-                              ) : null}
+                              <span className="quoteCardRail" aria-hidden="true" />
+                              <div className="quoteCardMain">
+                                <blockquote className="quoteCardBody">{entry.text}</blockquote>
+                                {entry.source.trim() ? (
+                                  <cite className="quoteCardSource">{entry.source}</cite>
+                                ) : null}
+                              </div>
                               {canEdit ? (
                                 <button
                                   className="quoteCardRemove"
@@ -2333,7 +2450,7 @@ export default function Home() {
                             </li>
                           ))}
                         </ul>
-                      )}
+                      ) : null}
                     </div>
                   )}
                 </span>
