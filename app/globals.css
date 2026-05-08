@@ -56,9 +56,6 @@ body {
 .yearCategoryTab,
 .yearCategoryTabLabel,
 .yearCategoryTabCount,
-.frameManagerInput,
-.frameManagerInput::placeholder,
-.frameManagerButton,
 .frameLabel,
 .addButton,
 .deleteSelectedButton,
@@ -467,55 +464,6 @@ body {
   color: var(--ink);
 }
 
-.frameManagerBar {
-  position: absolute;
-  bottom: clamp(12px, 2vh, 24px);
-  left: calc(var(--month-rail-width) + clamp(14px, 3vw, 32px));
-  right: clamp(14px, 3vw, 32px);
-  z-index: 4;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.frameManagerInput {
-  min-width: min(220px, 42vw);
-  height: 26px;
-  border: 1px solid var(--ink);
-  padding: 0 8px;
-  background: var(--bg);
-  color: var(--ink);
-  font: inherit;
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.frameManagerInput::placeholder {
-  text-transform: none;
-  opacity: 0.5;
-}
-
-.frameManagerButton {
-  height: 26px;
-  border: 1px solid var(--ink);
-  padding: 0 10px;
-  background: var(--bg);
-  color: var(--ink);
-  font: inherit;
-  font-size: 10px;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.frameManagerButton:hover {
-  background: var(--ink);
-  color: var(--bg);
-}
-
 .frameHeadingBlock {
   display: flex;
   flex-direction: column;
@@ -583,6 +531,52 @@ body {
   align-items: flex-end;
   gap: var(--accordion-gap);
   animation: monthChange 260ms cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+@media (min-width: 768px) {
+  .accordion {
+    box-sizing: border-box;
+    width: min(920px, calc(100vw - var(--month-rail-width) - clamp(28px, 5vw, 64px)));
+    height: min(86vh, 820px);
+    margin-inline: auto;
+  }
+
+  /*
+   Reserve a spine band inside the article’s border box (padding-top) so layout matches
+   the label + body. Keep the classic rotated spine (origin bottom-left) so labels stay
+   visible along the strip; writing-mode in a narrow column hid them in practice.
+  */
+  .frame {
+    box-sizing: border-box;
+    --frame-spine: clamp(44px, 9vw, 72px);
+    padding-top: var(--frame-spine);
+    overflow: visible;
+  }
+
+  .frameLabel {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    top: auto;
+    right: auto;
+    width: auto;
+    height: auto;
+    display: block;
+    transform: rotate(-90deg);
+    transform-origin: left bottom;
+    z-index: 2;
+    overflow: visible;
+    text-overflow: unset;
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0;
+  }
+
+  .frameRect {
+    top: var(--frame-spine);
+    height: auto;
+    bottom: 0;
+  }
 }
 
 @keyframes monthChange {
@@ -973,6 +967,32 @@ html[data-theme="minimal"] .yearMediaLightboxClose {
   user-select: none;
 }
 
+.yearMediaLightboxTmdb {
+  justify-self: start;
+  margin: 0;
+  padding: 6px 10px;
+  border: var(--frame-border-width) solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.yearMediaLightboxTmdb:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+html[data-theme="minimal"] .yearMediaLightboxTmdb {
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font-size: 12px;
+}
 
 .yearEntryGrid {
   display: grid;
@@ -1216,6 +1236,265 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   gap: 18px;
 }
 
+.canvasStack {
+  display: grid;
+  /* Row 1: TMDB picker (0 height when absent). Row 2: canvas must stay `1fr` even when
+     the picker is unmounted — a lone .imageCanvas must not sit in `auto` or height:100%
+     collapses and posters look “missing” until layout reflows. */
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+  gap: clamp(8px, 1.6vw, 12px);
+  align-content: stretch;
+  min-height: 0;
+}
+
+.canvasStack > .tmdbCanvasPicker {
+  grid-row: 1;
+  grid-column: 1;
+  min-height: 0;
+  align-self: start;
+}
+
+.canvasStack > .imageCanvas {
+  grid-row: 2;
+  grid-column: 1;
+  min-height: 0;
+}
+
+.tmdbCanvasPicker {
+  box-sizing: border-box;
+  max-height: min(38vh, 300px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: clamp(10px, 2vw, 14px);
+  border: 1px solid color-mix(in srgb, var(--frame-text-color) 42%, transparent);
+  background: color-mix(in srgb, var(--frame-color) 16%, rgb(255 255 255 / 0.08));
+  -webkit-overflow-scrolling: touch;
+}
+
+.tmdbSearchBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+}
+
+.tmdbSearchInput {
+  flex: 1 1 160px;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--frame-text-color) 52%, transparent);
+  padding: 8px 10px;
+  background: rgb(255 255 255 / 0.08);
+  color: inherit;
+  font: inherit;
+  font-size: clamp(11px, 1.35vw, 13px);
+}
+
+.tmdbSearchSubmit {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tmdbSearchSubmit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.nominatimSearchForm {
+  margin: 0;
+}
+
+.nominatimPolicyHint {
+  margin: 8px 0 0;
+  font-size: 10px;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  opacity: 0.72;
+}
+
+.nominatimHitIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.nominatimHitIconInner {
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.nominatimHitMeta {
+  display: block;
+  max-height: 3.6em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tmdbSearchStatus {
+  flex: 0 0 auto;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.65;
+  white-space: nowrap;
+}
+
+.tmdbSearchMessage {
+  margin: 8px 0 0;
+  font-size: 11px;
+  line-height: 1.35;
+  opacity: 0.92;
+}
+
+.tmdbHitList {
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tmdbHit {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px;
+  border: 1px solid color-mix(in srgb, var(--frame-text-color) 24%, transparent);
+  background: rgb(255 255 255 / 0.04);
+}
+
+.tmdbHitMain {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.tmdbHitThumb {
+  width: 46px;
+  height: 69px;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid color-mix(in srgb, var(--frame-text-color) 38%, transparent);
+  background: rgb(0 0 0 / 0.12);
+}
+
+.tmdbHitThumb--empty {
+  display: inline-block;
+}
+
+.nominatimHitThumb {
+  object-position: center;
+}
+
+.linkCardThumb {
+  width: 100%;
+  max-height: 120px;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 2px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+}
+
+.yearGridLinkThumb {
+  width: 100%;
+  max-height: 100px;
+  object-fit: cover;
+  object-position: center;
+  border-radius: 2px;
+  border: 1px solid rgb(255 255 255 / 0.28);
+}
+
+.tmdbHitText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tmdbHitTitleRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.tmdbHitKind {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in srgb, var(--frame-text-color) 35%, transparent);
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  line-height: 1.2;
+  opacity: 0.78;
+}
+
+.tmdbHitTitle {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: clamp(12px, 1.5vw, 14px);
+  line-height: 1.25;
+}
+
+.tmdbHitYear {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  opacity: 0.62;
+}
+
+.tmdbHitAdd {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid currentColor;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tmdbHitAdd:hover:not(:disabled) {
+  background: var(--frame-text-color);
+  color: var(--frame-color);
+}
+
+.tmdbHitAdd:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.tmdbAttribution {
+  margin: 12px 0 0;
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: 0.04em;
+  opacity: 0.62;
+}
+
+.tmdbAttribution a {
+  color: inherit;
+}
+
 .frameTitle {
   max-width: min-content;
   font-family: var(--font-frame-display, var(--font-body));
@@ -1241,6 +1520,7 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
 
 .addButton {
   box-sizing: border-box;
+  position: relative;
   display: grid;
   width: clamp(38px, 6vw, 48px);
   height: clamp(38px, 6vw, 48px);
@@ -1288,6 +1568,12 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
 .addButton:hover {
   background: var(--frame-text-color);
   color: var(--frame-color);
+}
+
+.addButton[aria-expanded="true"] {
+  background: var(--frame-text-color);
+  color: var(--frame-color);
+  font-size: 22px;
 }
 
 .fileInput {
@@ -1596,6 +1882,19 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   -webkit-touch-callout: none;
 }
 
+.canvasImageTmdbLink {
+  display: block;
+  line-height: 0;
+  text-decoration: none;
+  color: inherit;
+  cursor: pointer;
+}
+
+.canvasImageTmdbLink:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
 .imageShader {
   position: absolute !important;
   inset: 0;
@@ -1625,6 +1924,10 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
 }
 
 .imageControl {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid currentColor;
   padding: 4px 6px;
   background: var(--frame-color);
@@ -1632,6 +1935,7 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   font: inherit;
   font-size: 10px;
   line-height: 1;
+  text-decoration: none;
   cursor: pointer;
 }
 
@@ -1661,8 +1965,11 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   position: absolute;
   width: 1px;
   height: 1px;
+  padding: 0;
+  margin: -1px;
   overflow: hidden;
-  clip: rect(0, 0, 0, 0);
+  clip-path: inset(50%);
+  border: 0;
   white-space: nowrap;
 }
 
@@ -2256,10 +2563,6 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
 
   .authProfileMenu {
     top: calc(100% + 4px);
-  }
-
-  .frameManagerBar {
-    display: none;
   }
 
   .authBar[data-auth-state="signed-out"] {

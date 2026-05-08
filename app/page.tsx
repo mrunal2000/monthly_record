@@ -46,6 +46,8 @@ type LinkEntry = {
   url: string;
   title: string;
   note: string;
+  /** Preview image when saved from OSM (Nominatim extratags). */
+  thumbUrl?: string;
   /** Local / client time; used for ${year} overview. Server rows infer from created_at when loading. */
   addedAtMs?: number;
 };
@@ -57,9 +59,30 @@ type QuoteEntry = {
   addedAtMs?: number;
 };
 
+type TmdbSearchHit = {
+  id: number;
+  media_type: "movie" | "tv";
+  title: string;
+  release_date: string;
+  poster_path: string | null;
+};
+
+function tmdbHitBusyKey(hit: TmdbSearchHit) {
+  return `${hit.media_type}-${hit.id}`;
+}
+
 const CATEGORIES_STORAGE_KEY = "monthly-record-categories";
 const LINKS_STORAGE_KEY = "monthly-record-board-links";
 const QUOTES_STORAGE_KEY = "monthly-record-board-quotes";
+
+/** TMDB posters always land on the canonical media board (same month as the active collage). */
+const TMDB_MEDIA_CATEGORY_ID = "media";
+
+/** Open Library covers land on the canonical books board. */
+const OPEN_LIBRARY_BOOKS_CATEGORY_ID = "books";
+
+/** OSM / Nominatim place links land on the canonical restaurants board (links variant). */
+const RESTAURANTS_NOMINATIM_CATEGORY_ID = "restaurants";
 
 /** When `"1"`, allow editing without signing in; data stays in this browser (links/quotes persist; images use blob URLs until you sign in). Do not enable on a public production deployment. */
 const ALLOW_LOCAL_EDIT_WITHOUT_AUTH =
@@ -95,11 +118,12 @@ const DEFAULT_CATEGORIES: Category[] = [
     textColor: "var(--category-on-light)",
   },
   {
-    id: "food",
-    label: "FOOD",
-    note: "Add meals, places, recipes, cravings, and favorite bites.",
-    color: "var(--category-food)",
+    id: "restaurants",
+    label: "RESTAURANTS",
+    note: "Search for a place, then save an OpenStreetMap link to that spot.",
+    color: "var(--category-restaurants)",
     textColor: "var(--category-on-dark)",
+    variant: "links",
   },
   {
     id: "rabbit-holes",
@@ -148,6 +172,12 @@ type CanvasImage = {
   rotation: number;
   /** Set on upload; synced from Supabase created_at when present. Items without date still appear in the year overview (legacy). */
   addedAtMs?: number;
+  /** TMDB poster import — opens https://www.themoviedb.org/movie|tv/{id} (also inferred from storage_path when missing). */
+  tmdbId?: number;
+  tmdbMediaType?: "movie" | "tv";
+  /** Open Library cover import — work id for https://openlibrary.org/works/{key} (also inferred from storage_path). */
+  openLibraryWorkKey?: string;
+  openLibraryCoverId?: number;
 };
 
 /** Full-AR hover card for year grid; `position: fixed` so scroll parents don’t clip it. */
@@ -267,6 +297,116 @@ const YEAR_MEDIA_GRID_MIN_ROWS = 6;
 function belongsInOverviewYear(addedAtMs: number | undefined, overviewYear: number): boolean {
   if (addedAtMs === undefined) return true;
   return new Date(addedAtMs).getFullYear() === overviewYear;
+}
+
+/** TMDB allows public links to title pages; we match imports saved as `…tmdb-movie-123-…` / `…tmdb-tv-456-…`. */
+function parseTmdbFromStoragePath(storagePath?: string | null): {
+  tmdbId: number;
+  tmdbMediaType: "movie" | "tv";
+} | null {
+  if (!storagePath) return null;
+  const m = storagePath.match(/tmdb-(movie|tv)-(\d+)-/i);
+  if (!m) return null;
+  const id = Number.parseInt(m[2], 10);
+  if (!Number.isFinite(id)) return null;
+  const tmdbMediaType = m[1].toLowerCase() === "tv" ? "tv" : "movie";
+  return { tmdbId: id, tmdbMediaType };
+}
+
+function tmdbPageUrlForImage(image: CanvasImage): string | null {
+  let tmdbId = image.tmdbId;
+  let tmdbMediaType = image.tmdbMediaType;
+  if (tmdbId == null || (tmdbMediaType !== "movie" && tmdbMediaType !== "tv")) {
+    const parsed = parseTmdbFromStoragePath(image.storagePath);
+    if (!parsed) return null;
+    tmdbId = parsed.tmdbId;
+    tmdbMediaType = parsed.tmdbMediaType;
+  }
+  const slug = tmdbMediaType === "tv" ? "tv" : "movie";
+  return `https://www.themoviedb.org/${slug}/${tmdbId}`;
+}
+
+/** Imports saved as `…openlib-work-OL45804W-…` (work OLID from Open Library). */
+function parseOpenLibraryFromStoragePath(storagePath?: string | null): {
+  openLibraryWorkKey: string;
+} | null {
+  if (!storagePath) return null;
+  const m = storagePath.match(/openlib-work-([A-Za-z0-9]+)-/i);
+  if (!m) return null;
+  return { openLibraryWorkKey: m[1] };
+}
+
+function openLibraryPageUrlForImage(image: CanvasImage): string | null {
+  let workKey = image.openLibraryWorkKey;
+  if (!workKey) {
+    const parsed = parseOpenLibraryFromStoragePath(image.storagePath);
+    workKey = parsed?.openLibraryWorkKey;
+  }
+  if (!workKey) return null;
+  return `https://openlibrary.org/works/${workKey}`;
+}
+
+function catalogExternalPageForImage(
+  image: CanvasImage,
+  theme: ThemeName,
+): {
+  href: string;
+  controlLabel: string;
+  lightboxLabel: string;
+} | null {
+  const tmdb = tmdbPageUrlForImage(image);
+  if (tmdb) {
+    return {
+      href: tmdb,
+      controlLabel: "TMDB",
+      lightboxLabel: theme === "minimal" ? "Open on TMDB" : "OPEN ON TMDB",
+    };
+  }
+  const ol = openLibraryPageUrlForImage(image);
+  if (!ol) return null;
+  return {
+    href: ol,
+    controlLabel: theme === "minimal" ? "Open Library" : "OL",
+    lightboxLabel: theme === "minimal" ? "Open on Open Library" : "OPEN ON OPEN LIBRARY",
+  };
+}
+
+type OpenLibrarySearchHit = {
+  work_key: string;
+  title: string;
+  author_name: string[];
+  cover_i: number | null;
+  first_publish_year: number | null;
+};
+
+function openLibraryHitBusyKey(hit: OpenLibrarySearchHit) {
+  return `${hit.work_key}-${hit.cover_i ?? "nocover"}`;
+}
+
+type NominatimSearchHit = {
+  osm_type: string;
+  osm_id: number;
+  lat: string;
+  lon: string;
+  display_name: string;
+  name?: string;
+  class: string;
+  type: string;
+  thumb_url: string | null;
+};
+
+function nominatimHitBusyKey(hit: NominatimSearchHit) {
+  return `${hit.osm_type}-${hit.osm_id}`;
+}
+
+function osmBrowseUrl(hit: NominatimSearchHit): string {
+  return `https://www.openstreetmap.org/${hit.osm_type}/${hit.osm_id}`;
+}
+
+function placeTitleFromNominatimHit(hit: NominatimSearchHit): string {
+  if (hit.name?.trim()) return hit.name.trim();
+  const first = hit.display_name.split(",")[0]?.trim();
+  return first || hit.display_name;
 }
 
 function mergeImagesForYearCategory(
@@ -391,15 +531,49 @@ function canonicalBoardKey(boardKey: string) {
   return boardKey;
 }
 
+/** Legacy board keys used `food`; default frame is now `restaurants`. */
+function remapBoardKeyFoodToRestaurants(boardKey: string): string {
+  return boardKey.replace(/-food$/, "-restaurants");
+}
+
+function upgradeFoodCategoryToRestaurants(categories: Category[]): Category[] {
+  const def = DEFAULT_CATEGORIES.find((c) => c.id === RESTAURANTS_NOMINATIM_CATEGORY_ID);
+  const out: Category[] = [];
+  let hasRestaurants = false;
+  for (const c of categories) {
+    if (c.id === "food") {
+      hasRestaurants = true;
+      out.push({
+        ...c,
+        id: RESTAURANTS_NOMINATIM_CATEGORY_ID,
+        label: def?.label ?? "RESTAURANTS",
+        note: def?.note ?? c.note,
+        color: def?.color ?? "var(--category-restaurants)",
+        textColor: def?.textColor ?? c.textColor,
+        variant: "links",
+      });
+      continue;
+    }
+    if (c.id === RESTAURANTS_NOMINATIM_CATEGORY_ID) {
+      if (hasRestaurants) continue;
+      hasRestaurants = true;
+      out.push({
+        ...c,
+        variant: "links",
+        color: def?.color ?? c.color,
+        textColor: def?.textColor ?? c.textColor,
+      });
+      continue;
+    }
+    out.push(c);
+  }
+  return out;
+}
+
 function categoryIdFromBoardKey(boardKey: string) {
   const dash = boardKey.indexOf("-");
   if (dash === -1) return "";
   return boardKey.slice(dash + 1);
-}
-
-function colorsForCategoryIndex(index: number) {
-  const def = DEFAULT_CATEGORIES[index % DEFAULT_CATEGORIES.length];
-  return def ? { color: def.color, textColor: def.textColor } : { color: DEFAULT_CATEGORIES[0].color, textColor: DEFAULT_CATEGORIES[0].textColor };
 }
 
 function mergeTextBoardsById<T extends { id: string }>(
@@ -465,11 +639,20 @@ function parseLinksFromStorage(raw: string | null): Record<string, LinkEntry[]> 
           url: typeof row.url === "string" ? row.url : "",
           title: typeof row.title === "string" ? row.title : "",
           note: typeof row.note === "string" ? row.note : "",
+          thumbUrl:
+            typeof row.thumbUrl === "string" && row.thumbUrl.trim()
+              ? row.thumbUrl.trim()
+              : undefined,
           addedAtMs: typeof row.addedAtMs === "number" && Number.isFinite(row.addedAtMs) ? row.addedAtMs : undefined,
         }))
         .filter((e) => e.url.trim());
     }
-    return out;
+    const merged: Record<string, LinkEntry[]> = {};
+    for (const [k, list] of Object.entries(out)) {
+      const nk = remapBoardKeyFoodToRestaurants(k);
+      merged[nk] = [...(merged[nk] ?? []), ...list];
+    }
+    return merged;
   } catch {
     return {};
   }
@@ -586,6 +769,8 @@ export default function Home() {
   const currentMonthIndex = getCurrentMonthIndex();
   const [activeMonthIndex, setActiveMonthIndex] = useState(currentMonthIndex);
   const [activeIndex, setActiveIndex] = useState(0);
+  const activeIndexRef = useRef(0);
+  activeIndexRef.current = activeIndex;
   const [openDirection, setOpenDirection] = useState<OpenDirection>("ltr");
   const [imagesByBoard, setImagesByBoard] = useState<Record<string, CanvasImage[]>>({});
   const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
@@ -602,7 +787,6 @@ export default function Home() {
   const [theme, setTheme] = useState<ThemeName>("brutalist");
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
-  const [newFrameName, setNewFrameName] = useState("");
   const [linksByBoard, setLinksByBoard] = useState<Record<string, LinkEntry[]>>({});
   const [quotesByBoard, setQuotesByBoard] = useState<Record<string, QuoteEntry[]>>({});
   const [textBoardsHydrated, setTextBoardsHydrated] = useState(false);
@@ -610,6 +794,28 @@ export default function Home() {
   const [quoteDraft, setQuoteDraft] = useState({ text: "", source: "" });
   const [linkComposerOpen, setLinkComposerOpen] = useState(false);
   const [quoteComposerOpen, setQuoteComposerOpen] = useState(false);
+  const [tmdbPickerCategoryId, setTmdbPickerCategoryId] = useState<string | null>(null);
+  const [tmdbSearchQuery, setTmdbSearchQuery] = useState("");
+  const [tmdbSearchResults, setTmdbSearchResults] = useState<TmdbSearchHit[]>([]);
+  const [tmdbSearchBusy, setTmdbSearchBusy] = useState(false);
+  const [tmdbAddBusyKey, setTmdbAddBusyKey] = useState<string | null>(null);
+  const [tmdbMessage, setTmdbMessage] = useState<string | null>(null);
+  const [openLibraryPickerCategoryId, setOpenLibraryPickerCategoryId] = useState<string | null>(
+    null,
+  );
+  const [openLibrarySearchQuery, setOpenLibrarySearchQuery] = useState("");
+  const [openLibrarySearchResults, setOpenLibrarySearchResults] = useState<OpenLibrarySearchHit[]>(
+    [],
+  );
+  const [openLibrarySearchBusy, setOpenLibrarySearchBusy] = useState(false);
+  const [openLibraryAddBusyKey, setOpenLibraryAddBusyKey] = useState<string | null>(null);
+  const [openLibraryMessage, setOpenLibraryMessage] = useState<string | null>(null);
+  const [nominatimPickerCategoryId, setNominatimPickerCategoryId] = useState<string | null>(null);
+  const [nominatimQuery, setNominatimQuery] = useState("");
+  const [nominatimResults, setNominatimResults] = useState<NominatimSearchHit[]>([]);
+  const [nominatimSearchBusy, setNominatimSearchBusy] = useState(false);
+  const [nominatimMessage, setNominatimMessage] = useState<string | null>(null);
+  const [nominatimAddBusyKey, setNominatimAddBusyKey] = useState<string | null>(null);
   /** Year overview: click opens dialog; hover uses fixed-layer peek (avoids workspace overflow clip). */
   const [yearMediaPreview, setYearMediaPreview] = useState<CanvasImage | null>(null);
   const [yearMediaPeek, setYearMediaPeek] = useState<YearMediaHoverPeek | null>(null);
@@ -824,13 +1030,18 @@ export default function Home() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  function openFrame(index: number) {
-    if (index === activeIndex) {
+  function openFrame(index: number, options?: { preserveTmdbPicker?: boolean }) {
+    if (index === activeIndexRef.current) {
       return;
     }
-    setOpenDirection(index > activeIndex ? "ltr" : "rtl");
+    setOpenDirection(index > activeIndexRef.current ? "ltr" : "rtl");
     setActiveIndex(index);
     setSelectedImageId(null);
+    if (!options?.preserveTmdbPicker) {
+      setTmdbPickerCategoryId(null);
+      setOpenLibraryPickerCategoryId(null);
+      setNominatimPickerCategoryId(null);
+    }
   }
 
   useEffect(() => {
@@ -928,7 +1139,9 @@ export default function Home() {
             });
           }
         }
-        setCategories(upgradeLegacyLinksFrameCategories(next));
+        setCategories(
+          upgradeLegacyLinksFrameCategories(upgradeFoodCategoryToRestaurants(next)),
+        );
       }
     } catch {
       /* ignore */
@@ -1010,7 +1223,9 @@ export default function Home() {
       const grouped = (data as FavoriteItemRow[]).reduce<Record<string, CanvasImage[]>>(
         (boards, row) => {
           if (!row.image_url) return boards;
-          const key = canonicalBoardKey(row.board_key);
+          const key = remapBoardKeyFoodToRestaurants(canonicalBoardKey(row.board_key));
+          const tmdb = parseTmdbFromStoragePath(row.storage_path);
+          const ol = parseOpenLibraryFromStoragePath(row.storage_path);
           boards[key] = [
             ...(boards[key] ?? []),
             {
@@ -1022,6 +1237,8 @@ export default function Home() {
               width: row.width,
               rotation: row.rotation,
               addedAtMs: row.created_at ? new Date(row.created_at).getTime() : undefined,
+              ...(tmdb ?? {}),
+              ...(ol ?? {}),
             },
           ];
 
@@ -1081,16 +1298,19 @@ export default function Home() {
 
       if (data && data.length > 0) {
         for (const row of data as BoardTextRow[]) {
-          const key = canonicalBoardKey(row.board_key);
+          const key = remapBoardKeyFoodToRestaurants(canonicalBoardKey(row.board_key));
           const p = row.payload;
           if (row.kind === "link") {
             const url = typeof p.url === "string" ? p.url : "";
             if (!url.trim()) continue;
+            const thumbRaw = p.thumbUrl;
             const entry: LinkEntry = {
               id: row.id,
               url,
               title: typeof p.title === "string" ? p.title : "",
               note: typeof p.note === "string" ? p.note : "",
+              thumbUrl:
+                typeof thumbRaw === "string" && thumbRaw.trim() ? thumbRaw.trim() : undefined,
               addedAtMs: row.created_at ? new Date(row.created_at).getTime() : undefined,
             };
             remoteLinks[key] = [...(remoteLinks[key] ?? []), entry];
@@ -1118,7 +1338,144 @@ export default function Home() {
     setQuoteDraft({ text: "", source: "" });
     setLinkComposerOpen(false);
     setQuoteComposerOpen(false);
+    setOpenLibraryPickerCategoryId(null);
+    setOpenLibrarySearchQuery("");
+    setOpenLibrarySearchResults([]);
+    setOpenLibraryMessage(null);
+    setOpenLibrarySearchBusy(false);
+    setOpenLibraryAddBusyKey(null);
+    setNominatimPickerCategoryId(null);
+    setNominatimQuery("");
+    setNominatimResults([]);
+    setNominatimMessage(null);
+    setNominatimSearchBusy(false);
+    setNominatimAddBusyKey(null);
   }, [activeIndex, activeMonthIndex]);
+
+  /** Debounced TMDB search while the Media picker is open. */
+  useEffect(() => {
+    if (tmdbPickerCategoryId !== TMDB_MEDIA_CATEGORY_ID) return;
+
+    const trimmed = tmdbSearchQuery.trim();
+    if (trimmed.length < 2) {
+      setTmdbSearchResults([]);
+      setTmdbMessage(null);
+      setTmdbSearchBusy(false);
+      return;
+    }
+
+    const ac = new AbortController();
+    const debounceMs = 300;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setTmdbSearchBusy(true);
+        setTmdbMessage(null);
+        try {
+          const res = await fetch(`/api/tmdb/search?q=${encodeURIComponent(trimmed)}`, {
+            signal: ac.signal,
+          });
+          const data = (await res.json()) as { error?: string; results?: TmdbSearchHit[] };
+          if (ac.signal.aborted) return;
+          if (!res.ok) {
+            setTmdbSearchResults([]);
+            setTmdbMessage(
+              typeof data.error === "string"
+                ? data.error
+                : theme === "minimal"
+                  ? "Search failed."
+                  : "SEARCH FAILED",
+            );
+            return;
+          }
+          const hits = Array.isArray(data.results) ? data.results : [];
+          setTmdbSearchResults(hits);
+          if (hits.length === 0) {
+            setTmdbMessage(
+              theme === "minimal"
+                ? "No movies or TV shows found."
+                : "NO MOVIES OR TV SHOWS FOUND",
+            );
+          } else {
+            setTmdbMessage(null);
+          }
+        } catch {
+          if (ac.signal.aborted) return;
+          setTmdbSearchResults([]);
+          setTmdbMessage(theme === "minimal" ? "Search failed." : "SEARCH FAILED");
+        } finally {
+          if (!ac.signal.aborted) setTmdbSearchBusy(false);
+        }
+      })();
+    }, debounceMs);
+
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [tmdbSearchQuery, tmdbPickerCategoryId, theme]);
+
+  /** Debounced Open Library search while the Books picker is open. */
+  useEffect(() => {
+    if (openLibraryPickerCategoryId !== OPEN_LIBRARY_BOOKS_CATEGORY_ID) return;
+
+    const trimmed = openLibrarySearchQuery.trim();
+    if (trimmed.length < 2) {
+      setOpenLibrarySearchResults([]);
+      setOpenLibraryMessage(null);
+      setOpenLibrarySearchBusy(false);
+      return;
+    }
+
+    const ac = new AbortController();
+    const debounceMs = 300;
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        setOpenLibrarySearchBusy(true);
+        setOpenLibraryMessage(null);
+        try {
+          const res = await fetch(`/api/openlibrary/search?q=${encodeURIComponent(trimmed)}`, {
+            signal: ac.signal,
+          });
+          const data = (await res.json()) as {
+            error?: string;
+            results?: OpenLibrarySearchHit[];
+          };
+          if (ac.signal.aborted) return;
+          if (!res.ok) {
+            setOpenLibrarySearchResults([]);
+            setOpenLibraryMessage(
+              typeof data.error === "string"
+                ? data.error
+                : theme === "minimal"
+                  ? "Search failed."
+                  : "SEARCH FAILED",
+            );
+            return;
+          }
+          const hits = Array.isArray(data.results) ? data.results : [];
+          setOpenLibrarySearchResults(hits);
+          if (hits.length === 0) {
+            setOpenLibraryMessage(
+              theme === "minimal" ? "No books found." : "NO BOOKS FOUND",
+            );
+          } else {
+            setOpenLibraryMessage(null);
+          }
+        } catch {
+          if (ac.signal.aborted) return;
+          setOpenLibrarySearchResults([]);
+          setOpenLibraryMessage(theme === "minimal" ? "Search failed." : "SEARCH FAILED");
+        } finally {
+          if (!ac.signal.aborted) setOpenLibrarySearchBusy(false);
+        }
+      })();
+    }, debounceMs);
+
+    return () => {
+      window.clearTimeout(timer);
+      ac.abort();
+    };
+  }, [openLibrarySearchQuery, openLibraryPickerCategoryId, theme]);
 
   function boardKey(categoryId: string, monthIndex = activeMonthIndex) {
     return `${months[monthIndex].id}-${categoryId}`;
@@ -1142,35 +1499,6 @@ export default function Home() {
       .like("board_key", `%-${categoryId}`);
 
     if (error) console.error("Could not update saved labels:", error.message);
-  }
-
-  function addFrameFromInput() {
-    if (!canEdit) return;
-
-    const name = newFrameName.trim();
-    if (!name) return;
-
-    const { color, textColor } = colorsForCategoryIndex(categoriesRef.current.length);
-    const id = crypto.randomUUID();
-    setCategories((prev) => {
-      const next = [
-        ...prev,
-        {
-          id,
-          label: theme === "minimal" ? formatMinimalSentenceCase(name) : name.toUpperCase(),
-          note: "",
-          color,
-          textColor,
-          variant: "canvas" as const,
-        },
-      ];
-      setActiveIndex(next.length - 1);
-      setOpenDirection("ltr");
-
-      return next;
-    });
-
-    setNewFrameName("");
   }
 
   function safeFileName(fileName: string) {
@@ -1253,6 +1581,77 @@ export default function Home() {
     setSaveStatus("SAVED");
   }
 
+  async function appendSingleCanvasImage(
+    categoryId: string,
+    file: File,
+    options?: {
+      flushDom?: boolean;
+      tmdb?: { id: number; media_type: "movie" | "tv" };
+      openLibrary?: { workKey: string; coverId: number };
+    },
+  ): Promise<boolean> {
+    if (!canEdit) {
+      setSaveStatus("SIGN IN TO EDIT");
+      return false;
+    }
+
+    const imageKey = boardKey(categoryId);
+
+    try {
+      setSaveStatus(supabase ? "SAVING" : "LOCAL ONLY");
+      const existing = imagesByBoardRef.current[imageKey] ?? [];
+      const uploaded = await uploadImageFile(file, imageKey);
+
+      const entry: CanvasImage = {
+        id: crypto.randomUUID(),
+        src: uploaded.src,
+        storagePath: uploaded.storagePath,
+        x: 12 + (existing.length % 4) * 9,
+        y: 28 + (existing.length % 3) * 10,
+        width: 30,
+        rotation: 0,
+        addedAtMs: Date.now(),
+        ...(options?.tmdb
+          ? { tmdbId: options.tmdb.id, tmdbMediaType: options.tmdb.media_type }
+          : {}),
+        ...(options?.openLibrary
+          ? {
+              openLibraryWorkKey: options.openLibrary.workKey,
+              openLibraryCoverId: options.openLibrary.coverId,
+            }
+          : {}),
+      };
+
+      const applyImages = (current: Record<string, CanvasImage[]>) => {
+        const next = {
+          ...current,
+          [imageKey]: [...(current[imageKey] ?? []), entry],
+        };
+        imagesByBoardRef.current = next;
+        return next;
+      };
+
+      if (options?.flushDom) {
+        flushSync(() => {
+          setImagesByBoard(applyImages);
+        });
+      } else {
+        setImagesByBoard(applyImages);
+      }
+
+      await saveImageRecord(imageKey, categoryId, entry);
+      setSaveStatus("SAVED");
+      return true;
+    } catch (error) {
+      console.error(
+        "Could not upload image:",
+        error instanceof Error ? error.message : String(error),
+      );
+      setSaveStatus("SAVE ERROR");
+      return false;
+    }
+  }
+
   async function addImages(event: ChangeEvent<HTMLInputElement>, categoryId: string) {
     const files = Array.from(event.target.files ?? []);
     if (files.length === 0) return;
@@ -1262,50 +1661,239 @@ export default function Home() {
       return;
     }
 
-    const imageKey = boardKey(categoryId);
+    for (const file of files) {
+      await appendSingleCanvasImage(categoryId, file);
+    }
 
-    try {
-      setSaveStatus(supabase ? "SAVING" : "LOCAL ONLY");
-      const existing = imagesByBoardRef.current[imageKey] ?? [];
-      const nextImages = await Promise.all(
-        files.map(async (file, fileIndex) => {
-          const uploaded = await uploadImageFile(file, imageKey);
+    if (categoryId === TMDB_MEDIA_CATEGORY_ID) {
+      setTmdbPickerCategoryId(null);
+      setTmdbSearchResults([]);
+      setTmdbSearchQuery("");
+      setTmdbMessage(null);
+    }
 
-          return {
-            id: crypto.randomUUID(),
-            src: uploaded.src,
-            storagePath: uploaded.storagePath,
-            x: 12 + ((existing.length + fileIndex) % 4) * 9,
-            y: 28 + ((existing.length + fileIndex) % 3) * 10,
-            width: 30,
-            rotation: 0,
-            addedAtMs: Date.now(),
-          };
-        }),
-      );
-
-      setImagesByBoard((current) => {
-        const next = {
-          ...current,
-          [imageKey]: [...(current[imageKey] ?? []), ...nextImages],
-        };
-        imagesByBoardRef.current = next;
-
-        return next;
-      });
-
-      await Promise.all(
-        nextImages.map((entry) => saveImageRecord(imageKey, categoryId, entry)),
-      );
-    } catch (error) {
-      console.error(
-        "Could not upload image:",
-        error instanceof Error ? error.message : String(error),
-      );
-      setSaveStatus("SAVE ERROR");
+    if (categoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID) {
+      setOpenLibraryPickerCategoryId(null);
+      setOpenLibrarySearchResults([]);
+      setOpenLibrarySearchQuery("");
+      setOpenLibraryMessage(null);
     }
 
     event.target.value = "";
+  }
+
+  async function addMoviePosterFromTmdb(hit: TmdbSearchHit) {
+    if (!hit.poster_path) {
+      setTmdbMessage(
+        theme === "minimal" ? "No poster for this title." : "NO POSTER FOR THIS TITLE",
+      );
+      return;
+    }
+
+    const busyKey = tmdbHitBusyKey(hit);
+    setTmdbAddBusyKey(busyKey);
+    setTmdbMessage(null);
+
+    try {
+      const params = new URLSearchParams({ size: "w780", poster: hit.poster_path });
+      const res = await fetch(`/api/tmdb/image?${params.toString()}`);
+      if (!res.ok) {
+        setTmdbMessage(theme === "minimal" ? "Could not load poster." : "COULD NOT LOAD POSTER");
+        return;
+      }
+
+      const blob = await res.blob();
+      const ext = blob.type.includes("png")
+        ? "png"
+        : blob.type.includes("webp")
+          ? "webp"
+          : "jpg";
+      const shortTitle = safeFileName(hit.title).slice(0, 48) || "poster";
+      const file = new File([blob], `tmdb-${hit.media_type}-${hit.id}-${shortTitle}.${ext}`, {
+        type: blob.type || `image/${ext === "jpg" ? "jpeg" : ext}`,
+      });
+
+      const ok = await appendSingleCanvasImage(TMDB_MEDIA_CATEGORY_ID, file, {
+        flushDom: true,
+        tmdb: { id: hit.id, media_type: hit.media_type },
+      });
+      if (ok) {
+        const mediaIdx = categoriesRef.current.findIndex((c) => c.id === TMDB_MEDIA_CATEGORY_ID);
+        if (mediaIdx >= 0 && mediaIdx !== activeIndexRef.current) {
+          openFrame(mediaIdx);
+        }
+
+        setTmdbPickerCategoryId(null);
+        setTmdbSearchResults([]);
+        setTmdbSearchQuery("");
+        setTmdbMessage(null);
+      }
+    } catch {
+      setTmdbMessage(theme === "minimal" ? "Could not add poster." : "COULD NOT ADD POSTER");
+    } finally {
+      setTmdbAddBusyKey(null);
+    }
+  }
+
+  async function addBookCoverFromOpenLibrary(hit: OpenLibrarySearchHit) {
+    if (hit.cover_i == null) {
+      setOpenLibraryMessage(
+        theme === "minimal" ? "No cover for this edition." : "NO COVER FOR THIS EDITION",
+      );
+      return;
+    }
+
+    const busyKey = openLibraryHitBusyKey(hit);
+    setOpenLibraryAddBusyKey(busyKey);
+    setOpenLibraryMessage(null);
+
+    try {
+      const params = new URLSearchParams({
+        id: String(hit.cover_i),
+        size: "L",
+      });
+      const res = await fetch(`/api/openlibrary/cover?${params.toString()}`);
+      if (!res.ok) {
+        setOpenLibraryMessage(
+          theme === "minimal" ? "Could not load cover." : "COULD NOT LOAD COVER",
+        );
+        return;
+      }
+
+      const blob = await res.blob();
+      const ext = blob.type.includes("png")
+        ? "png"
+        : blob.type.includes("webp")
+          ? "webp"
+          : "jpg";
+      const shortTitle = safeFileName(hit.title).slice(0, 48) || "cover";
+      const file = new File(
+        [blob],
+        `openlib-work-${hit.work_key}-${shortTitle}.${ext}`,
+        {
+          type: blob.type || `image/${ext === "jpg" ? "jpeg" : ext}`,
+        },
+      );
+
+      const ok = await appendSingleCanvasImage(OPEN_LIBRARY_BOOKS_CATEGORY_ID, file, {
+        flushDom: true,
+        openLibrary: { workKey: hit.work_key, coverId: hit.cover_i },
+      });
+      if (ok) {
+        const booksIdx = categoriesRef.current.findIndex(
+          (c) => c.id === OPEN_LIBRARY_BOOKS_CATEGORY_ID,
+        );
+        if (booksIdx >= 0 && booksIdx !== activeIndexRef.current) {
+          openFrame(booksIdx);
+        }
+
+        setOpenLibraryPickerCategoryId(null);
+        setOpenLibrarySearchResults([]);
+        setOpenLibrarySearchQuery("");
+        setOpenLibraryMessage(null);
+      }
+    } catch {
+      setOpenLibraryMessage(theme === "minimal" ? "Could not add cover." : "COULD NOT ADD COVER");
+    } finally {
+      setOpenLibraryAddBusyKey(null);
+    }
+  }
+
+  async function runNominatimSearch() {
+    const trimmed = nominatimQuery.trim();
+    if (trimmed.length < 2) {
+      setNominatimResults([]);
+      setNominatimMessage(
+        theme === "minimal" ? "Enter at least 2 characters." : "ENTER AT LEAST 2 CHARACTERS",
+      );
+      return;
+    }
+
+    setNominatimSearchBusy(true);
+    setNominatimMessage(null);
+    try {
+      const res = await fetch(`/api/nominatim/search?q=${encodeURIComponent(trimmed)}`);
+      const data = (await res.json()) as { error?: string; results?: NominatimSearchHit[] };
+      if (!res.ok) {
+        setNominatimResults([]);
+        setNominatimMessage(
+          typeof data.error === "string"
+            ? data.error
+            : theme === "minimal"
+              ? "Search failed."
+              : "SEARCH FAILED",
+        );
+        return;
+      }
+      const hits = Array.isArray(data.results) ? data.results : [];
+      setNominatimResults(hits);
+      setNominatimMessage(
+        hits.length === 0
+          ? theme === "minimal"
+            ? "No places found."
+            : "NO PLACES FOUND"
+          : null,
+      );
+    } catch {
+      setNominatimResults([]);
+      setNominatimMessage(theme === "minimal" ? "Search failed." : "SEARCH FAILED");
+    } finally {
+      setNominatimSearchBusy(false);
+    }
+  }
+
+  async function addPlaceFromNominatimHit(hit: NominatimSearchHit) {
+    if (!canEdit) {
+      setSaveStatus("SIGN IN TO EDIT");
+      return;
+    }
+
+    const busyKey = nominatimHitBusyKey(hit);
+    setNominatimAddBusyKey(busyKey);
+    setNominatimMessage(null);
+
+    try {
+      const imageKey = boardKey(RESTAURANTS_NOMINATIM_CATEGORY_ID);
+      const url = osmBrowseUrl(hit);
+      const noteRaw = hit.display_name;
+      const note = noteRaw.length > 280 ? `${noteRaw.slice(0, 277).trimEnd()}…` : noteRaw;
+      const entry: LinkEntry = {
+        id: crypto.randomUUID(),
+        url,
+        title: placeTitleFromNominatimHit(hit),
+        note,
+        ...(hit.thumb_url ? { thumbUrl: hit.thumb_url } : {}),
+        addedAtMs: Date.now(),
+      };
+
+      setLinksByBoard((current) => ({
+        ...current,
+        [imageKey]: [...(current[imageKey] ?? []), entry],
+      }));
+
+      if (!supabase || !user) {
+        setSaveStatus("LOCAL ONLY");
+      } else {
+        setSaveStatus("SAVING");
+        await persistLinkToSupabase(imageKey, entry);
+      }
+
+      const restIdx = categoriesRef.current.findIndex(
+        (c) => c.id === RESTAURANTS_NOMINATIM_CATEGORY_ID,
+      );
+      if (restIdx >= 0 && restIdx !== activeIndexRef.current) {
+        openFrame(restIdx);
+      }
+
+      setNominatimPickerCategoryId(null);
+      setNominatimResults([]);
+      setNominatimQuery("");
+      setNominatimMessage(null);
+    } catch {
+      setNominatimMessage(theme === "minimal" ? "Could not add place." : "COULD NOT ADD PLACE");
+    } finally {
+      setNominatimAddBusyKey(null);
+    }
   }
 
   function startDrag(event: PointerEvent<HTMLElement>, imageKey: string, imageId: string) {
@@ -1706,6 +2294,7 @@ export default function Home() {
         url: entry.url,
         title: entry.title,
         note: entry.note,
+        ...(entry.thumbUrl ? { thumbUrl: entry.thumbUrl } : {}),
       },
       updated_at: new Date().toISOString(),
     });
@@ -2179,31 +2768,6 @@ export default function Home() {
         ) : null
       ) : null}
 
-      {canEdit && !isYearOverview ? (
-        <div className="frameManagerBar" onPointerDown={(event) => event.stopPropagation()}>
-          <label className="srOnly" htmlFor="new-frame-name">
-            New frame name
-          </label>
-          <input
-            id="new-frame-name"
-            className="frameManagerInput"
-            type="text"
-            placeholder="New frame name"
-            value={newFrameName}
-            onChange={(event) => setNewFrameName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.preventDefault();
-                addFrameFromInput();
-              }
-            }}
-          />
-          <button className="frameManagerButton" type="button" onClick={() => addFrameFromInput()}>
-            ADD FRAME
-          </button>
-        </div>
-      ) : null}
-
       {isYearOverview ? (
         <section
           className="yearOverview"
@@ -2343,6 +2907,15 @@ export default function Home() {
                           target="_blank"
                           rel="noopener noreferrer"
                         >
+                          {entry.thumbUrl ? (
+                            <img
+                              className="yearGridLinkThumb"
+                              src={entry.thumbUrl}
+                              alt=""
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : null}
                           <span className="linkCardHost">{linkHostname(entry.url)}</span>
                           <span className="linkCardTitle">
                             {linkDisplayHeading(entry.url, entry.title)}
@@ -2434,6 +3007,20 @@ export default function Home() {
                   alt=""
                   draggable={false}
                 />
+                {(() => {
+                  const catalog = catalogExternalPageForImage(yearMediaPreview, theme);
+                  if (!catalog) return null;
+                  return (
+                    <a
+                      className="yearMediaLightboxTmdb"
+                      href={catalog.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {catalog.lightboxLabel}
+                    </a>
+                  );
+                })()}
               </div>
             </>
           ) : null}
@@ -2486,10 +3073,18 @@ export default function Home() {
               aria-selected={isActive}
               onClick={() => openFrame(index)}
               onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  openFrame(index);
+                if (event.key !== "Enter" && event.key !== " ") return;
+                const el = event.target;
+                if (
+                  el instanceof HTMLInputElement ||
+                  el instanceof HTMLTextAreaElement ||
+                  el instanceof HTMLSelectElement
+                ) {
+                  return;
                 }
+                if (el instanceof HTMLElement && el.isContentEditable) return;
+                event.preventDefault();
+                openFrame(index);
               }}
             >
               <span className="frameLabel">
@@ -2599,31 +3194,205 @@ export default function Home() {
                             DELETE SELECTED
                           </button>
                         ) : null}
-                        <label
-                          className="addButton"
-                          onPointerDown={(event) => event.stopPropagation()}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <span aria-hidden="true">+</span>
-                          <span className="srOnly">
-                            Add images to{" "}
-                            {theme === "minimal"
-                              ? formatMinimalSentenceCase(item.label)
-                              : item.label}
-                          </span>
-                          <input
-                            className="fileInput"
-                            type="file"
-                            accept="image/*"
-                            multiple
+                        {item.id === TMDB_MEDIA_CATEGORY_ID && isActive ? (
+                            <button
+                              type="button"
+                              className="addButton"
+                              aria-expanded={
+                                tmdbPickerCategoryId === TMDB_MEDIA_CATEGORY_ID ? true : false
+                              }
+                              aria-label={
+                                theme === "minimal"
+                                  ? tmdbPickerCategoryId === TMDB_MEDIA_CATEGORY_ID
+                                    ? "Close TMDB search"
+                                    : "Search TMDB for Media"
+                                  : tmdbPickerCategoryId === TMDB_MEDIA_CATEGORY_ID
+                                    ? "CLOSE TMDB SEARCH"
+                                    : "SEARCH TMDB FOR MEDIA"
+                              }
+                              tabIndex={isActive ? 0 : -1}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                const show =
+                                  tmdbPickerCategoryId !== TMDB_MEDIA_CATEGORY_ID;
+                                setTmdbPickerCategoryId(
+                                  show ? TMDB_MEDIA_CATEGORY_ID : null,
+                                );
+                                if (show) {
+                                  setOpenLibraryPickerCategoryId(null);
+                                  setOpenLibrarySearchResults([]);
+                                  setOpenLibrarySearchQuery("");
+                                  setOpenLibraryMessage(null);
+                                  setNominatimPickerCategoryId(null);
+                                  setNominatimQuery("");
+                                  setNominatimResults([]);
+                                  setNominatimMessage(null);
+                                  setLinkComposerOpen(false);
+                                  setQuoteComposerOpen(false);
+                                }
+                              }}
+                            >
+                              <span aria-hidden="true">
+                                {tmdbPickerCategoryId === TMDB_MEDIA_CATEGORY_ID
+                                  ? "×"
+                                  : "+"}
+                              </span>
+                              <span className="srOnly">
+                                {theme === "minimal"
+                                  ? tmdbPickerCategoryId === TMDB_MEDIA_CATEGORY_ID
+                                    ? "Close"
+                                    : `Add to ${formatMinimalSentenceCase(item.label)}`
+                                  : tmdbPickerCategoryId === TMDB_MEDIA_CATEGORY_ID
+                                    ? "CLOSE"
+                                    : `ADD TO ${item.label}`}
+                              </span>
+                            </button>
+                        ) : item.id === OPEN_LIBRARY_BOOKS_CATEGORY_ID && isActive ? (
+                          <button
+                            type="button"
+                            className="addButton"
+                            aria-expanded={
+                              openLibraryPickerCategoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID
+                                ? true
+                                : false
+                            }
+                            aria-label={
+                              theme === "minimal"
+                                ? openLibraryPickerCategoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID
+                                  ? "Close Open Library search"
+                                  : "Search Open Library for Books"
+                                : openLibraryPickerCategoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID
+                                  ? "CLOSE OPEN LIBRARY SEARCH"
+                                  : "SEARCH OPEN LIBRARY FOR BOOKS"
+                            }
                             tabIndex={isActive ? 0 : -1}
-                            onChange={(event) => addImages(event, item.id)}
-                          />
-                        </label>
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              const show =
+                                openLibraryPickerCategoryId !== OPEN_LIBRARY_BOOKS_CATEGORY_ID;
+                              setOpenLibraryPickerCategoryId(
+                                show ? OPEN_LIBRARY_BOOKS_CATEGORY_ID : null,
+                              );
+                              if (show) {
+                                setTmdbPickerCategoryId(null);
+                                setTmdbSearchResults([]);
+                                setTmdbSearchQuery("");
+                                setTmdbMessage(null);
+                                setNominatimPickerCategoryId(null);
+                                setNominatimQuery("");
+                                setNominatimResults([]);
+                                setNominatimMessage(null);
+                                setLinkComposerOpen(false);
+                                setQuoteComposerOpen(false);
+                              }
+                            }}
+                          >
+                            <span aria-hidden="true">
+                              {openLibraryPickerCategoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID
+                                ? "×"
+                                : "+"}
+                            </span>
+                            <span className="srOnly">
+                              {theme === "minimal"
+                                ? openLibraryPickerCategoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID
+                                  ? "Close"
+                                  : `Add to ${formatMinimalSentenceCase(item.label)}`
+                                : openLibraryPickerCategoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID
+                                  ? "CLOSE"
+                                  : `ADD TO ${item.label}`}
+                            </span>
+                          </button>
+                        ) : (
+                          <label
+                            className="addButton"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onClick={(event) => event.stopPropagation()}
+                          >
+                            <span aria-hidden="true">+</span>
+                            <span className="srOnly">
+                              Add images to{" "}
+                              {theme === "minimal"
+                                ? formatMinimalSentenceCase(item.label)
+                                : item.label}
+                            </span>
+                            <input
+                              className="fileInput"
+                              type="file"
+                              accept="image/*"
+                              multiple
+                              tabIndex={isActive ? 0 : -1}
+                              onChange={(event) => addImages(event, item.id)}
+                            />
+                          </label>
+                        )}
                       </span>
                     ) : canEdit && variant === "links" && isActive ? (
                       <span className="canvasActions">
-                        {linkComposerOpen ? (
+                        {item.id === RESTAURANTS_NOMINATIM_CATEGORY_ID ? (
+                          nominatimPickerCategoryId === RESTAURANTS_NOMINATIM_CATEGORY_ID ? (
+                            <button
+                              className="deleteSelectedButton"
+                              type="button"
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setNominatimPickerCategoryId(null);
+                                setNominatimQuery("");
+                                setNominatimResults([]);
+                                setNominatimMessage(null);
+                              }}
+                            >
+                              {theme === "minimal" ? "Cancel" : "CANCEL"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="addButton"
+                              aria-expanded={
+                                nominatimPickerCategoryId === RESTAURANTS_NOMINATIM_CATEGORY_ID
+                                  ? true
+                                  : false
+                              }
+                              aria-label={
+                                theme === "minimal"
+                                  ? "Search OpenStreetMap for a place"
+                                  : "SEARCH OPENSTREETMAP FOR A PLACE"
+                              }
+                              tabIndex={isActive ? 0 : -1}
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                const show =
+                                  nominatimPickerCategoryId !== RESTAURANTS_NOMINATIM_CATEGORY_ID;
+                                setNominatimPickerCategoryId(
+                                  show ? RESTAURANTS_NOMINATIM_CATEGORY_ID : null,
+                                );
+                                if (show) {
+                                  setTmdbPickerCategoryId(null);
+                                  setTmdbSearchResults([]);
+                                  setTmdbSearchQuery("");
+                                  setTmdbMessage(null);
+                                  setOpenLibraryPickerCategoryId(null);
+                                  setOpenLibrarySearchResults([]);
+                                  setOpenLibrarySearchQuery("");
+                                  setOpenLibraryMessage(null);
+                                  setLinkComposerOpen(false);
+                                  setLinkDraft({ url: "", title: "", note: "" });
+                                  setQuoteComposerOpen(false);
+                                }
+                              }}
+                            >
+                              <span aria-hidden="true">+</span>
+                              <span className="srOnly">
+                                {theme === "minimal"
+                                  ? `Add to ${formatMinimalSentenceCase(item.label)}`
+                                  : `ADD TO ${item.label}`}
+                              </span>
+                            </button>
+                          )
+                        ) : linkComposerOpen ? (
                           <button
                             className="deleteSelectedButton"
                             type="button"
@@ -2648,6 +3417,10 @@ export default function Home() {
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
+                              setNominatimPickerCategoryId(null);
+                              setNominatimQuery("");
+                              setNominatimResults([]);
+                              setNominatimMessage(null);
                               setLinkComposerOpen(true);
                             }}
                           >
@@ -2682,6 +3455,10 @@ export default function Home() {
                             onPointerDown={(event) => event.stopPropagation()}
                             onClick={(event) => {
                               event.stopPropagation();
+                              setNominatimPickerCategoryId(null);
+                              setNominatimQuery("");
+                              setNominatimResults([]);
+                              setNominatimMessage(null);
                               setQuoteComposerOpen(true);
                             }}
                           >
@@ -2692,14 +3469,254 @@ export default function Home() {
                     ) : null}
                   </span>
                   {variant === "canvas" ? (
-                    <span
-                      className="imageCanvas"
-                      onPointerDown={clearCanvasSelection}
-                      onContextMenu={(event) => {
-                        if (canEdit) event.preventDefault();
-                      }}
-                    >
-                      {boardImages.map((image) => (
+                    <div className="canvasStack">
+                      {canEdit &&
+                      isActive &&
+                      item.id === TMDB_MEDIA_CATEGORY_ID &&
+                      tmdbPickerCategoryId === TMDB_MEDIA_CATEGORY_ID ? (
+                        <div
+                          className="tmdbCanvasPicker"
+                          onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
+                        >
+                          <div className="tmdbSearchBar">
+                            <label className="srOnly" htmlFor={`tmdb-q-${item.id}`}>
+                              Search movies and TV shows
+                            </label>
+                            <input
+                              id={`tmdb-q-${item.id}`}
+                              className="tmdbSearchInput"
+                              type="text"
+                              inputMode="search"
+                              autoComplete="off"
+                              spellCheck={false}
+                              enterKeyHint="search"
+                              placeholder={
+                                theme === "minimal"
+                                  ? "Type to search movies or TV…"
+                                  : "TYPE TO SEARCH MOVIES OR TV"
+                              }
+                              value={tmdbSearchQuery}
+                              onChange={(event) => setTmdbSearchQuery(event.target.value)}
+                              aria-busy={tmdbSearchBusy}
+                            />
+                            {tmdbSearchBusy ? (
+                              <span className="tmdbSearchStatus" aria-live="polite">
+                                {theme === "minimal" ? "Searching…" : "SEARCHING…"}
+                              </span>
+                            ) : null}
+                          </div>
+                          {tmdbMessage ? (
+                            <p className="tmdbSearchMessage" role="status">
+                              {tmdbMessage}
+                            </p>
+                          ) : null}
+                          {tmdbSearchResults.length > 0 ? (
+                            <ul className="tmdbHitList" aria-live="polite" aria-relevant="additions text">
+                              {tmdbSearchResults.map((hit) => (
+                                <li key={tmdbHitBusyKey(hit)} className="tmdbHit">
+                                  <div className="tmdbHitMain">
+                                    {hit.poster_path ? (
+                                      <img
+                                        className="tmdbHitThumb"
+                                        src={`https://image.tmdb.org/t/p/w92${hit.poster_path}`}
+                                        alt=""
+                                      />
+                                    ) : (
+                                      <span className="tmdbHitThumb tmdbHitThumb--empty" aria-hidden />
+                                    )}
+                                    <span className="tmdbHitText">
+                                      <span className="tmdbHitTitleRow">
+                                        <span className="tmdbHitTitle">{hit.title}</span>
+                                        <span
+                                          className="tmdbHitKind"
+                                          data-kind={hit.media_type}
+                                        >
+                                          {hit.media_type === "tv"
+                                            ? "TV"
+                                            : theme === "minimal"
+                                              ? "Film"
+                                              : "FILM"}
+                                        </span>
+                                      </span>
+                                      {hit.release_date ? (
+                                        <span className="tmdbHitYear">
+                                          {hit.release_date.slice(0, 4)}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  </div>
+                                  <button
+                                    className="tmdbHitAdd"
+                                    type="button"
+                                    disabled={
+                                      !hit.poster_path || tmdbAddBusyKey === tmdbHitBusyKey(hit)
+                                    }
+                                    onClick={() => void addMoviePosterFromTmdb(hit)}
+                                  >
+                                    {tmdbAddBusyKey === tmdbHitBusyKey(hit)
+                                      ? theme === "minimal"
+                                        ? "Adding…"
+                                        : "ADDING…"
+                                      : theme === "minimal"
+                                        ? "Add poster"
+                                        : "ADD POSTER"}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p className="tmdbAttribution">
+                            Movie and TV data courtesy of{" "}
+                            <a
+                              href="https://www.themoviedb.org/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              TMDB
+                            </a>
+                            .
+                          </p>
+                        </div>
+                      ) : null}
+                      {canEdit &&
+                      isActive &&
+                      item.id === OPEN_LIBRARY_BOOKS_CATEGORY_ID &&
+                      openLibraryPickerCategoryId === OPEN_LIBRARY_BOOKS_CATEGORY_ID ? (
+                        <div
+                          className="tmdbCanvasPicker"
+                          onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
+                        >
+                          <div className="tmdbSearchBar">
+                            <label className="srOnly" htmlFor={`ol-q-${item.id}`}>
+                              Search books
+                            </label>
+                            <input
+                              id={`ol-q-${item.id}`}
+                              className="tmdbSearchInput"
+                              type="text"
+                              inputMode="search"
+                              autoComplete="off"
+                              spellCheck={false}
+                              enterKeyHint="search"
+                              placeholder={
+                                theme === "minimal"
+                                  ? "Type to search books…"
+                                  : "TYPE TO SEARCH BOOKS"
+                              }
+                              value={openLibrarySearchQuery}
+                              onChange={(event) => setOpenLibrarySearchQuery(event.target.value)}
+                              aria-busy={openLibrarySearchBusy}
+                            />
+                            {openLibrarySearchBusy ? (
+                              <span className="tmdbSearchStatus" aria-live="polite">
+                                {theme === "minimal" ? "Searching…" : "SEARCHING…"}
+                              </span>
+                            ) : null}
+                          </div>
+                          {openLibraryMessage ? (
+                            <p className="tmdbSearchMessage" role="status">
+                              {openLibraryMessage}
+                            </p>
+                          ) : null}
+                          {openLibrarySearchResults.length > 0 ? (
+                            <ul
+                              className="tmdbHitList"
+                              aria-live="polite"
+                              aria-relevant="additions text"
+                            >
+                              {openLibrarySearchResults.map((hit) => (
+                                <li key={openLibraryHitBusyKey(hit)} className="tmdbHit">
+                                  <div className="tmdbHitMain">
+                                    {hit.cover_i != null ? (
+                                      <img
+                                        className="tmdbHitThumb"
+                                        src={`/api/openlibrary/cover?id=${hit.cover_i}&size=S`}
+                                        alt=""
+                                      />
+                                    ) : (
+                                      <span
+                                        className="tmdbHitThumb tmdbHitThumb--empty"
+                                        aria-hidden
+                                      />
+                                    )}
+                                    <span className="tmdbHitText">
+                                      <span className="tmdbHitTitleRow">
+                                        <span className="tmdbHitTitle">{hit.title}</span>
+                                        <span className="tmdbHitKind" data-kind="book">
+                                          {theme === "minimal" ? "Book" : "BOOK"}
+                                        </span>
+                                      </span>
+                                      {hit.author_name.length > 0 ? (
+                                        <span className="tmdbHitYear">
+                                          {hit.author_name.slice(0, 2).join(
+                                            theme === "minimal" ? ", " : " · ",
+                                          )}
+                                          {hit.author_name.length > 2
+                                            ? theme === "minimal"
+                                              ? "…"
+                                              : "…"
+                                            : ""}
+                                        </span>
+                                      ) : null}
+                                      {hit.first_publish_year != null ? (
+                                        <span className="tmdbHitYear">
+                                          {hit.author_name.length > 0
+                                            ? theme === "minimal"
+                                              ? " · "
+                                              : " — "
+                                            : ""}
+                                          {hit.first_publish_year}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  </div>
+                                  <button
+                                    className="tmdbHitAdd"
+                                    type="button"
+                                    disabled={
+                                      hit.cover_i == null ||
+                                      openLibraryAddBusyKey === openLibraryHitBusyKey(hit)
+                                    }
+                                    onClick={() => void addBookCoverFromOpenLibrary(hit)}
+                                  >
+                                    {openLibraryAddBusyKey === openLibraryHitBusyKey(hit)
+                                      ? theme === "minimal"
+                                        ? "Adding…"
+                                        : "ADDING…"
+                                      : theme === "minimal"
+                                        ? "Add cover"
+                                        : "ADD COVER"}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p className="tmdbAttribution">
+                            Book data courtesy of{" "}
+                            <a
+                              href="https://openlibrary.org/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Open Library
+                            </a>
+                            .
+                          </p>
+                        </div>
+                      ) : null}
+                      <span
+                        className="imageCanvas"
+                        onPointerDown={clearCanvasSelection}
+                        onContextMenu={(event) => {
+                          if (canEdit) event.preventDefault();
+                        }}
+                      >
+                      {boardImages.map((image) => {
+                        const catalogPage = catalogExternalPageForImage(image, theme);
+                        const canvasImg = (
+                          <img className="canvasImage" src={image.src} alt="" draggable={false} />
+                        );
+                        return (
                         <span
                           key={image.id}
                           className="imageItem"
@@ -2717,13 +3734,46 @@ export default function Home() {
                           }
                           onPointerDown={(event) => startDrag(event, imageKey, image.id)}
                         >
-                          <img className="canvasImage" src={image.src} alt="" draggable={false} />
+                          {!canEdit && catalogPage ? (
+                            <a
+                              className="canvasImageTmdbLink"
+                              href={catalogPage.href}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(event) => event.stopPropagation()}
+                              onPointerDown={(event) => event.stopPropagation()}
+                            >
+                              {canvasImg}
+                            </a>
+                          ) : (
+                            canvasImg
+                          )}
                           {canEdit ? (
                             <>
                               <span
                                 className="imageControls"
                                 onPointerDown={(event) => event.stopPropagation()}
                               >
+                                {catalogPage ? (
+                                  <a
+                                    className="imageControl"
+                                    href={catalogPage.href}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    aria-label={
+                                      theme === "minimal"
+                                        ? catalogPage.controlLabel === "TMDB"
+                                          ? "Open on TMDB (new tab)"
+                                          : "Open on Open Library (new tab)"
+                                        : catalogPage.controlLabel === "TMDB"
+                                          ? "OPEN ON TMDB (NEW TAB)"
+                                          : "OPEN ON OPEN LIBRARY (NEW TAB)"
+                                    }
+                                    onPointerDown={(event) => event.stopPropagation()}
+                                  >
+                                    {catalogPage.controlLabel}
+                                  </a>
+                                ) : null}
                                 <button
                                   className="imageControl"
                                   type="button"
@@ -2766,14 +3816,158 @@ export default function Home() {
                             </>
                           ) : null}
                         </span>
-                      ))}
-                    </span>
+                        );
+                      })}
+                      </span>
+                    </div>
                   ) : variant === "links" ? (
                     <div
                       className="textBoardSurface textBoardSurface--links"
                       onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
                     >
-                      {canEdit && isActive && linkComposerOpen ? (
+                      {canEdit &&
+                      isActive &&
+                      item.id === RESTAURANTS_NOMINATIM_CATEGORY_ID &&
+                      nominatimPickerCategoryId === RESTAURANTS_NOMINATIM_CATEGORY_ID ? (
+                        <div
+                          className="tmdbCanvasPicker nominatimCanvasPicker"
+                          onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
+                        >
+                          <form
+                            className="nominatimSearchForm"
+                            onPointerDown={(event) => event.stopPropagation()}
+                            onSubmit={(event) => {
+                              event.preventDefault();
+                              void runNominatimSearch();
+                            }}
+                          >
+                            <div className="tmdbSearchBar">
+                              <label className="srOnly" htmlFor={`nominatim-q-${item.id}`}>
+                                Search for a place
+                              </label>
+                              <input
+                                id={`nominatim-q-${item.id}`}
+                                className="tmdbSearchInput"
+                                type="text"
+                                inputMode="search"
+                                autoComplete="off"
+                                spellCheck={false}
+                                enterKeyHint="search"
+                                placeholder={
+                                  theme === "minimal"
+                                    ? "Place or restaurant name…"
+                                    : "PLACE OR RESTAURANT NAME"
+                                }
+                                value={nominatimQuery}
+                                onChange={(event) => setNominatimQuery(event.target.value)}
+                                aria-busy={nominatimSearchBusy}
+                              />
+                              <button
+                                className="tmdbSearchSubmit"
+                                type="submit"
+                                disabled={nominatimSearchBusy}
+                              >
+                                {theme === "minimal" ? "Search" : "SEARCH"}
+                              </button>
+                              {nominatimSearchBusy ? (
+                                <span className="tmdbSearchStatus" aria-live="polite">
+                                  {theme === "minimal" ? "Searching…" : "SEARCHING…"}
+                                </span>
+                              ) : null}
+                            </div>
+                          </form>
+                          <p className="nominatimPolicyHint" role="note">
+                            {theme === "minimal"
+                              ? "Search runs when you tap Search (not on every keystroke), per OpenStreetMap’s Nominatim policy."
+                              : "SEARCH RUNS ON BUTTON ONLY — NOMINATIM USAGE POLICY."}
+                          </p>
+                          {nominatimMessage ? (
+                            <p className="tmdbSearchMessage" role="status">
+                              {nominatimMessage}
+                            </p>
+                          ) : null}
+                          {nominatimResults.length > 0 ? (
+                            <ul
+                              className="tmdbHitList"
+                              aria-live="polite"
+                              aria-relevant="additions text"
+                            >
+                              {nominatimResults.map((hit) => (
+                                <li key={nominatimHitBusyKey(hit)} className="tmdbHit">
+                                  <div className="tmdbHitMain">
+                                    {hit.thumb_url ? (
+                                      <img
+                                        className="tmdbHitThumb nominatimHitThumb"
+                                        src={hit.thumb_url}
+                                        alt=""
+                                        referrerPolicy="no-referrer"
+                                      />
+                                    ) : (
+                                      <span
+                                        className="tmdbHitThumb tmdbHitThumb--empty nominatimHitIcon"
+                                        aria-hidden
+                                      >
+                                        <span className="nominatimHitIconInner">⌖</span>
+                                      </span>
+                                    )}
+                                    <span className="tmdbHitText">
+                                      <span className="tmdbHitTitleRow">
+                                        <span className="tmdbHitTitle">
+                                          {placeTitleFromNominatimHit(hit)}
+                                        </span>
+                                        <span className="tmdbHitKind" data-kind="place">
+                                          {[hit.class, hit.type].filter(Boolean).join(" · ") ||
+                                            (theme === "minimal" ? "Place" : "PLACE")}
+                                        </span>
+                                      </span>
+                                      <span className="tmdbHitYear nominatimHitMeta">
+                                        {hit.display_name}
+                                      </span>
+                                    </span>
+                                  </div>
+                                  <button
+                                    className="tmdbHitAdd"
+                                    type="button"
+                                    disabled={nominatimAddBusyKey === nominatimHitBusyKey(hit)}
+                                    onClick={() => void addPlaceFromNominatimHit(hit)}
+                                  >
+                                    {nominatimAddBusyKey === nominatimHitBusyKey(hit)
+                                      ? theme === "minimal"
+                                        ? "Adding…"
+                                        : "ADDING…"
+                                      : theme === "minimal"
+                                        ? "Add link"
+                                        : "ADD LINK"}
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          ) : null}
+                          <p className="tmdbAttribution">
+                            Results from{" "}
+                            <a
+                              href="https://nominatim.org/release-docs/latest/api/Search/"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Nominatim
+                            </a>{" "}
+                            /{" "}
+                            <a
+                              href="https://www.openstreetmap.org/copyright"
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              OpenStreetMap
+                            </a>
+                            .
+                          </p>
+                        </div>
+                      ) : null}
+                      {canEdit &&
+                      isActive &&
+                      linkComposerOpen &&
+                      item.id !== RESTAURANTS_NOMINATIM_CATEGORY_ID ? (
                         <form
                           className="linkComposer"
                           onPointerDown={(event) => event.stopPropagation()}
@@ -2838,6 +4032,15 @@ export default function Home() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                               >
+                                {entry.thumbUrl ? (
+                                  <img
+                                    className="linkCardThumb"
+                                    src={entry.thumbUrl}
+                                    alt=""
+                                    loading="lazy"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                ) : null}
                                 <span className="linkCardHost">{linkHostname(entry.url)}</span>
                                 <span className="linkCardTitle">
                                   {linkDisplayHeading(entry.url, entry.title)}

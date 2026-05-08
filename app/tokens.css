@@ -38,7 +38,7 @@ html[data-theme="paper"] {
   --category-books: #34495e;
   --category-misc: #5c4a38;
   --category-wishlist: #746c5e;
-  --category-food: #2d4739;
+  --category-restaurants: #2d4739;
   --category-rabbit: #5b3e6b;
   --category-quotes: #285a61;
   --category-on-dark: #faf7ef;
@@ -82,7 +82,7 @@ html[data-theme="brutalist"] {
   --category-books: #ff7eb3;
   --category-misc: #d4a3ff;
   --category-wishlist: #7ee8d3;
-  --category-food: #9be06c;
+  --category-restaurants: #9be06c;
   --category-rabbit: #b07cff;
   --category-quotes: #ffa64d;
   --category-on-dark: #070808;
@@ -131,7 +131,7 @@ html[data-theme="minimal"] {
   --category-books: #424245;
   --category-misc: #636366;
   --category-wishlist: #d2d2d7;
-  --category-food: #515154;
+  --category-restaurants: #515154;
   --category-rabbit: #7c3aed;
   --category-quotes: #0d9488;
   --category-on-dark: #f5f5f7;
