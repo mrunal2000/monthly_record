@@ -39,6 +39,8 @@ html[data-theme="paper"] {
   --category-misc: #5c4a38;
   --category-wishlist: #746c5e;
   --category-food: #2d4739;
+  --category-rabbit: #5b3e6b;
+  --category-quotes: #285a61;
   --category-on-dark: #faf7ef;
   --category-on-light: #121212;
 
@@ -81,6 +83,8 @@ html[data-theme="brutalist"] {
   --category-misc: #d4a3ff;
   --category-wishlist: #7ee8d3;
   --category-food: #9be06c;
+  --category-rabbit: #b07cff;
+  --category-quotes: #ffa64d;
   --category-on-dark: #070808;
   --category-on-light: #070808;
 
@@ -128,6 +132,8 @@ html[data-theme="minimal"] {
   --category-misc: #636366;
   --category-wishlist: #d2d2d7;
   --category-food: #515154;
+  --category-rabbit: #7c3aed;
+  --category-quotes: #0d9488;
   --category-on-dark: #f5f5f7;
   --category-on-light: #1d1d1f;
 

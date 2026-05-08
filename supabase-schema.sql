@@ -22,6 +22,41 @@ create table if not exists public.favorite_items (
 create index if not exists favorite_items_board_key_idx
   on public.favorite_items (board_key);
 
+create table if not exists public.board_text_items (
+  id uuid primary key default gen_random_uuid(),
+  board_key text not null,
+  kind text not null check (kind in ('link', 'quote')),
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists board_text_items_board_key_idx
+  on public.board_text_items (board_key);
+
+alter table public.board_text_items enable row level security;
+
+drop policy if exists "public can read board text items" on public.board_text_items;
+create policy "public can read board text items"
+  on public.board_text_items for select
+  using (true);
+
+drop policy if exists "authenticated users can insert board text items" on public.board_text_items;
+create policy "authenticated users can insert board text items"
+  on public.board_text_items for insert
+  with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated users can update board text items" on public.board_text_items;
+create policy "authenticated users can update board text items"
+  on public.board_text_items for update
+  using (auth.role() = 'authenticated')
+  with check (auth.role() = 'authenticated');
+
+drop policy if exists "authenticated users can delete board text items" on public.board_text_items;
+create policy "authenticated users can delete board text items"
+  on public.board_text_items for delete
+  using (auth.role() = 'authenticated');
+
 alter table public.favorite_items enable row level security;
 
 drop policy if exists "public can read favorite items" on public.favorite_items;

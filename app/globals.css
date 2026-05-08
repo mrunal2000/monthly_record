@@ -757,6 +757,236 @@ body {
   overscroll-behavior: contain;
 }
 
+.textBoardSurface {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.8vw, 14px);
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  padding: clamp(8px, 1.6vw, 12px);
+  border: 1px solid rgb(255 255 255 / 0.28);
+  background: rgb(255 255 255 / 0.06);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.textBoardSurface--links .linkComposer {
+  scrollbar-gutter: stable;
+}
+
+.textBoardEmpty {
+  margin: clamp(18px, 4vw, 28px) auto;
+  padding: 0 clamp(14px, 3vw, 22px);
+  max-width: 38ch;
+  font-size: clamp(11px, 1.45vw, 13px);
+  line-height: 1.45;
+  text-align: center;
+  opacity: 0.72;
+}
+
+.linkComposer,
+.quoteComposer {
+  display: grid;
+  gap: clamp(6px, 1.2vw, 9px);
+  padding-bottom: clamp(4px, 0.9vw, 8px);
+  border-bottom: 1px solid rgb(255 255 255 / 0.2);
+}
+
+@media (min-width: 520px) {
+  .linkComposer {
+    grid-template-columns: 1fr minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+    align-items: stretch;
+  }
+
+  .linkComposerInput--url {
+    grid-column: 1 / -1;
+  }
+
+  .linkComposerInput:not(.linkComposerInput--url) {
+    min-width: 0;
+  }
+
+  .linkComposer .textBoardSubmit {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+.linkComposerInput,
+.quoteComposerTextarea,
+.quoteComposerSource {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  padding: clamp(7px, 1.2vw, 9px) clamp(9px, 1.4vw, 11px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: clamp(11px, 1.35vw, 13px);
+}
+
+.quoteComposerTextarea {
+  resize: vertical;
+  min-height: 4.8em;
+  line-height: 1.4;
+}
+
+.textBoardSubmit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: clamp(32px, 5vw, 38px);
+  margin-top: 2px;
+  border: 1px solid currentColor;
+  padding: 0 clamp(14px, 2vw, 20px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: clamp(10px, 1.2vw, 11px);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.textBoardSubmit:hover {
+  background: var(--frame-text-color);
+  color: var(--frame-color);
+}
+
+.linkCardList,
+.quoteCardList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(10px, 1.8vw, 14px);
+}
+
+.linkCard {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: clamp(11px, 2vw, 14px) clamp(12px, 2vw, 16px);
+  border: 1px solid rgb(255 255 255 / 0.35);
+  background: rgb(255 255 255 / 0.1);
+}
+
+.linkCardAnchor {
+  display: grid;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.linkCardAnchor:hover .linkCardTitle {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.linkCardHost {
+  font-size: clamp(10px, 1.15vw, 11px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+.linkCardTitle {
+  font-family: var(--font-frame-display, var(--font-body));
+  font-size: clamp(16px, 2.8vw, 22px);
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  word-break: break-word;
+}
+
+.linkCardUrl {
+  font-size: clamp(10px, 1.25vw, 11px);
+  line-height: 1.35;
+  opacity: 0.62;
+  word-break: break-all;
+}
+
+.linkCardNote {
+  margin: 0;
+  font-size: clamp(11px, 1.35vw, 12px);
+  line-height: 1.4;
+  opacity: 0.85;
+}
+
+.linkCardRemove,
+.quoteCardRemove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid currentColor;
+  padding: 0;
+  background: var(--frame-color);
+  color: var(--frame-text-color);
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.quoteCard {
+  position: relative;
+  padding: clamp(14px, 2.4vw, 20px) clamp(16px, 2.8vw, 24px) clamp(14px, 2.4vw, 20px)
+    clamp(22px, 4vw, 40px);
+  border: 1px solid rgb(255 255 255 / 0.3);
+  background: rgb(255 255 255 / 0.08);
+}
+
+.quoteCardBody {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: clamp(14px, 2.1vw, 17px);
+  font-style: italic;
+  line-height: 1.55;
+  letter-spacing: 0.01em;
+}
+
+.quoteCardBody::before {
+  content: "“";
+  margin-left: -0.45em;
+  margin-right: 0.08em;
+  font-size: 1.15em;
+  opacity: 0.45;
+}
+
+.quoteCardBody::after {
+  content: "”";
+  margin-left: 0.06em;
+  font-size: 1.15em;
+  opacity: 0.45;
+}
+
+.quoteCardSource {
+  display: block;
+  margin-top: 10px;
+  font-size: clamp(11px, 1.35vw, 12px);
+  font-style: normal;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.quoteCardSource::before {
+  content: "— ";
+}
+
 .imageItem {
   position: absolute;
   display: block;

@@ -22,3 +22,4 @@ export const supabase = isSupabaseConfigured
 
 export const FAVORITES_BUCKET = "monthly-favorites";
 export const FAVORITES_TABLE = "favorite_items";
+export const BOARD_TEXT_TABLE = "board_text_items";

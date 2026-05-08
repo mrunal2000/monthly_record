@@ -28,7 +28,9 @@ function isEmailSendRateLimited(
 }
 import FavoritesAiAgent from "./components/FavoritesAiAgent";
 import { normalizeImageFileForStorage } from "./lib/normalizeUploadImage";
-import { FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
+import { BOARD_TEXT_TABLE, FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
+
+type BoardVariant = "canvas" | "links" | "quotes";
 
 type Category = {
   id: string;
@@ -36,9 +38,25 @@ type Category = {
   note: string;
   color: string;
   textColor: string;
+  variant?: BoardVariant;
+};
+
+type LinkEntry = {
+  id: string;
+  url: string;
+  title: string;
+  note: string;
+};
+
+type QuoteEntry = {
+  id: string;
+  text: string;
+  source: string;
 };
 
 const CATEGORIES_STORAGE_KEY = "monthly-record-categories";
+const LINKS_STORAGE_KEY = "monthly-record-board-links";
+const QUOTES_STORAGE_KEY = "monthly-record-board-quotes";
 
 const DEFAULT_CATEGORIES: Category[] = [
   {
@@ -75,6 +93,22 @@ const DEFAULT_CATEGORIES: Category[] = [
     note: "Add meals, places, recipes, cravings, and favorite bites.",
     color: "var(--category-food)",
     textColor: "var(--category-on-dark)",
+  },
+  {
+    id: "rabbit-holes",
+    label: "RABBIT HOLES",
+    note: "Save links worth falling into — essays, clips, repos, rabbit holes.",
+    color: "var(--category-rabbit)",
+    textColor: "var(--category-on-dark)",
+    variant: "links",
+  },
+  {
+    id: "quotes",
+    label: "QUOTES",
+    note: "Short lines worth keeping — overheard, read, highlighted.",
+    color: "var(--category-quotes)",
+    textColor: "var(--category-on-dark)",
+    variant: "quotes",
   },
 ];
 
@@ -261,6 +295,108 @@ function colorsForCategoryIndex(index: number) {
   return def ? { color: def.color, textColor: def.textColor } : { color: DEFAULT_CATEGORIES[0].color, textColor: DEFAULT_CATEGORIES[0].textColor };
 }
 
+function mergeTextBoardsById<T extends { id: string }>(
+  local: Record<string, T[]>,
+  remote: Record<string, T[]>,
+): Record<string, T[]> {
+  const keys = new Set([...Object.keys(local), ...Object.keys(remote)]);
+  const out: Record<string, T[]> = {};
+  for (const k of keys) {
+    const byId = new Map<string, T>();
+    for (const e of local[k] ?? []) byId.set(e.id, e);
+    for (const e of remote[k] ?? []) byId.set(e.id, e);
+    out[k] = Array.from(byId.values());
+  }
+  return out;
+}
+
+function normalizeUrlInput(raw: string): string | null {
+  const t = raw.trim();
+  if (!t) return null;
+  try {
+    const u = /^https?:\/\//i.test(t) ? new URL(t) : new URL(`https://${t}`);
+    if (u.protocol !== "http:" && u.protocol !== "https:") return null;
+    return u.toString();
+  } catch {
+    return null;
+  }
+}
+
+function linkHostname(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./i, "");
+  } catch {
+    return "";
+  }
+}
+
+function linkDisplayHeading(url: string, customTitle: string): string {
+  const t = customTitle.trim();
+  if (t) return t;
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./i, "");
+    const path = u.pathname.replace(/\/$/, "") || "";
+    return path && path !== "/" ? `${host}${path}` : host;
+  } catch {
+    return url;
+  }
+}
+
+function parseLinksFromStorage(raw: string | null): Record<string, LinkEntry[]> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    const out: Record<string, LinkEntry[]> = {};
+    for (const [boardKey, rows] of Object.entries(parsed)) {
+      if (!boardKey.trim() || !Array.isArray(rows)) continue;
+      out[boardKey] = rows
+        .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"))
+        .map((row) => ({
+          id: typeof row.id === "string" && row.id.trim() ? row.id : crypto.randomUUID(),
+          url: typeof row.url === "string" ? row.url : "",
+          title: typeof row.title === "string" ? row.title : "",
+          note: typeof row.note === "string" ? row.note : "",
+        }))
+        .filter((e) => e.url.trim());
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function parseQuotesFromStorage(raw: string | null): Record<string, QuoteEntry[]> {
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object") return {};
+    const out: Record<string, QuoteEntry[]> = {};
+    for (const [boardKey, rows] of Object.entries(parsed)) {
+      if (!boardKey.trim() || !Array.isArray(rows)) continue;
+      out[boardKey] = rows
+        .filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object"))
+        .map((row) => ({
+          id: typeof row.id === "string" && row.id.trim() ? row.id : crypto.randomUUID(),
+          text: typeof row.text === "string" ? row.text : "",
+          source: typeof row.source === "string" ? row.source : "",
+        }))
+        .filter((e) => e.text.trim());
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+type BoardTextRow = {
+  id: string;
+  board_key: string;
+  kind: "link" | "quote";
+  payload: Record<string, unknown>;
+};
+
 function getActiveFrameShareToken(
   frameCount: number,
   collapsedToken: "--collapsed-width" | "--accordion-mobile-collapsed-height",
@@ -357,6 +493,11 @@ export default function Home() {
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
   const [newFrameName, setNewFrameName] = useState("");
+  const [linksByBoard, setLinksByBoard] = useState<Record<string, LinkEntry[]>>({});
+  const [quotesByBoard, setQuotesByBoard] = useState<Record<string, QuoteEntry[]>>({});
+  const [textBoardsHydrated, setTextBoardsHydrated] = useState(false);
+  const [linkDraft, setLinkDraft] = useState({ url: "", title: "", note: "" });
+  const [quoteDraft, setQuoteDraft] = useState({ text: "", source: "" });
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
@@ -378,12 +519,15 @@ export default function Home() {
   const pastMonthBoardImageCounts = useMemo(
     () =>
       months.map((monthMeta) =>
-        categories.reduce(
-          (sum, cat) => sum + (imagesByBoard[`${monthMeta.id}-${cat.id}`]?.length ?? 0),
-          0,
-        ),
+        categories.reduce((sum, cat) => {
+          const key = `${monthMeta.id}-${cat.id}`;
+          const variant = cat.variant ?? "canvas";
+          if (variant === "canvas") return sum + (imagesByBoard[key]?.length ?? 0);
+          if (variant === "links") return sum + (linksByBoard[key]?.length ?? 0);
+          return sum + (quotesByBoard[key]?.length ?? 0);
+        }, 0),
       ),
-    [categories, imagesByBoard],
+    [categories, imagesByBoard, linksByBoard, quotesByBoard],
   );
 
   const clearCanvasSelection = useCallback(() => {
@@ -496,15 +640,32 @@ export default function Home() {
           typeof r.textColor === "string" && r.textColor
             ? r.textColor
             : DEFAULT_CATEGORIES[0].textColor;
+        const variantRaw = r.variant;
+        const variant: BoardVariant =
+          variantRaw === "links" || variantRaw === "quotes" || variantRaw === "canvas"
+            ? variantRaw
+            : "canvas";
         next.push({
           id,
           label: label.trim() || "UNTITLED",
           note,
           color,
           textColor,
+          variant,
         });
       }
-      if (next.length > 0) setCategories(next);
+      if (next.length > 0) {
+        const have = new Set(next.map((c) => c.id));
+        for (const def of DEFAULT_CATEGORIES) {
+          if (!have.has(def.id)) {
+            next.push({
+              ...def,
+              variant: def.variant ?? "canvas",
+            });
+          }
+        }
+        setCategories(next);
+      }
     } catch {
       /* ignore */
     }
@@ -601,6 +762,78 @@ export default function Home() {
     void loadFavorites();
   }, []);
 
+  useEffect(() => {
+    const lsLinks = parseLinksFromStorage(window.localStorage.getItem(LINKS_STORAGE_KEY));
+    const lsQuotes = parseQuotesFromStorage(window.localStorage.getItem(QUOTES_STORAGE_KEY));
+    setLinksByBoard(lsLinks);
+    setQuotesByBoard(lsQuotes);
+    setTextBoardsHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!textBoardsHydrated) return;
+    try {
+      window.localStorage.setItem(LINKS_STORAGE_KEY, JSON.stringify(linksByBoard));
+      window.localStorage.setItem(QUOTES_STORAGE_KEY, JSON.stringify(quotesByBoard));
+    } catch {
+      /* ignore */
+    }
+  }, [linksByBoard, quotesByBoard, textBoardsHydrated]);
+
+  useEffect(() => {
+    if (!supabase) return;
+
+    void (async () => {
+      const { data, error } = await supabase
+        .from(BOARD_TEXT_TABLE)
+        .select("id, board_key, kind, payload")
+        .order("created_at", { ascending: true });
+
+      if (error) {
+        console.error("Could not load board text items:", error.message);
+        return;
+      }
+
+      const remoteLinks: Record<string, LinkEntry[]> = {};
+      const remoteQuotes: Record<string, QuoteEntry[]> = {};
+
+      if (data && data.length > 0) {
+        for (const row of data as BoardTextRow[]) {
+          const key = canonicalBoardKey(row.board_key);
+          const p = row.payload;
+          if (row.kind === "link") {
+            const url = typeof p.url === "string" ? p.url : "";
+            if (!url.trim()) continue;
+            const entry: LinkEntry = {
+              id: row.id,
+              url,
+              title: typeof p.title === "string" ? p.title : "",
+              note: typeof p.note === "string" ? p.note : "",
+            };
+            remoteLinks[key] = [...(remoteLinks[key] ?? []), entry];
+          } else if (row.kind === "quote") {
+            const text = typeof p.text === "string" ? p.text : "";
+            if (!text.trim()) continue;
+            const entry: QuoteEntry = {
+              id: row.id,
+              text,
+              source: typeof p.source === "string" ? p.source : "",
+            };
+            remoteQuotes[key] = [...(remoteQuotes[key] ?? []), entry];
+          }
+        }
+      }
+
+      setLinksByBoard((prev) => mergeTextBoardsById(prev, remoteLinks));
+      setQuotesByBoard((prev) => mergeTextBoardsById(prev, remoteQuotes));
+    })();
+  }, []);
+
+  useEffect(() => {
+    setLinkDraft({ url: "", title: "", note: "" });
+    setQuoteDraft({ text: "", source: "" });
+  }, [activeIndex, activeMonthIndex]);
+
   function boardKey(categoryId: string, monthIndex = activeMonthIndex) {
     return `${months[monthIndex].id}-${categoryId}`;
   }
@@ -642,6 +875,7 @@ export default function Home() {
           note: "",
           color,
           textColor,
+          variant: "canvas" as const,
         },
       ];
       setActiveIndex(next.length - 1);
@@ -1174,6 +1408,140 @@ export default function Home() {
     if (selectedImageId === imageId) setSelectedImageId(null);
   }
 
+  async function persistLinkToSupabase(boardKey: string, entry: LinkEntry) {
+    if (!supabase || !user || !canEdit) return;
+    setSaveStatus("SAVING");
+    const { error } = await supabase.from(BOARD_TEXT_TABLE).upsert({
+      id: entry.id,
+      board_key: canonicalBoardKey(boardKey),
+      kind: "link",
+      payload: {
+        url: entry.url,
+        title: entry.title,
+        note: entry.note,
+      },
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("Could not save link:", error.message);
+      setSaveStatus("SAVE ERROR");
+      return;
+    }
+    setSaveStatus("SAVED");
+  }
+
+  async function persistQuoteToSupabase(boardKey: string, entry: QuoteEntry) {
+    if (!supabase || !user || !canEdit) return;
+    setSaveStatus("SAVING");
+    const { error } = await supabase.from(BOARD_TEXT_TABLE).upsert({
+      id: entry.id,
+      board_key: canonicalBoardKey(boardKey),
+      kind: "quote",
+      payload: {
+        text: entry.text,
+        source: entry.source,
+      },
+      updated_at: new Date().toISOString(),
+    });
+    if (error) {
+      console.error("Could not save quote:", error.message);
+      setSaveStatus("SAVE ERROR");
+      return;
+    }
+    setSaveStatus("SAVED");
+  }
+
+  async function removeBoardTextItemFromRemote(id: string) {
+    if (!supabase || !user) return;
+    setSaveStatus("DELETING");
+    const { error } = await supabase.from(BOARD_TEXT_TABLE).delete().eq("id", id);
+    if (error) {
+      console.error("Could not delete board text item:", error.message);
+      setSaveStatus("DELETE ERROR");
+      return;
+    }
+    setSaveStatus("SAVED");
+  }
+
+  function addLinkFromDraft(categoryId: string) {
+    if (!canEdit) {
+      setSaveStatus("SIGN IN TO EDIT");
+      return;
+    }
+
+    const url = normalizeUrlInput(linkDraft.url);
+    if (!url) return;
+
+    const imageKey = boardKey(categoryId);
+    const entry: LinkEntry = {
+      id: crypto.randomUUID(),
+      url,
+      title: linkDraft.title.trim(),
+      note: linkDraft.note.trim(),
+    };
+
+    setLinksByBoard((current) => ({
+      ...current,
+      [imageKey]: [...(current[imageKey] ?? []), entry],
+    }));
+    setLinkDraft({ url: "", title: "", note: "" });
+
+    if (!supabase || !user) {
+      setSaveStatus("LOCAL ONLY");
+      return;
+    }
+
+    void persistLinkToSupabase(imageKey, entry);
+  }
+
+  function addQuoteFromDraft(categoryId: string) {
+    if (!canEdit) {
+      setSaveStatus("SIGN IN TO EDIT");
+      return;
+    }
+
+    const text = quoteDraft.text.trim();
+    if (!text) return;
+
+    const imageKey = boardKey(categoryId);
+    const entry: QuoteEntry = {
+      id: crypto.randomUUID(),
+      text,
+      source: quoteDraft.source.trim(),
+    };
+
+    setQuotesByBoard((current) => ({
+      ...current,
+      [imageKey]: [...(current[imageKey] ?? []), entry],
+    }));
+    setQuoteDraft({ text: "", source: "" });
+
+    if (!supabase || !user) {
+      setSaveStatus("LOCAL ONLY");
+      return;
+    }
+
+    void persistQuoteToSupabase(imageKey, entry);
+  }
+
+  async function removeLinkEntry(imageKey: string, entryId: string) {
+    if (!canEdit) return;
+    if (supabase && user) await removeBoardTextItemFromRemote(entryId);
+    setLinksByBoard((current) => ({
+      ...current,
+      [imageKey]: (current[imageKey] ?? []).filter((entry) => entry.id !== entryId),
+    }));
+  }
+
+  async function removeQuoteEntry(imageKey: string, entryId: string) {
+    if (!canEdit) return;
+    if (supabase && user) await removeBoardTextItemFromRemote(entryId);
+    setQuotesByBoard((current) => ({
+      ...current,
+      [imageKey]: (current[imageKey] ?? []).filter((entry) => entry.id !== entryId),
+    }));
+  }
+
   async function sendEmailOtp() {
     if (!supabase || !authEmail.trim() || authRequestBusy) return;
 
@@ -1295,6 +1663,8 @@ export default function Home() {
         months={months}
         categories={categories}
         imagesByBoard={imagesByBoard}
+        linksByBoard={linksByBoard}
+        quotesByBoard={quotesByBoard}
         theme={theme}
       />
       <header className="mobileAppChrome">
@@ -1527,8 +1897,16 @@ export default function Home() {
         {categories.map((item, index) => {
           const isActive = index === activeIndex;
           const imageKey = boardKey(item.id);
+          const variant = item.variant ?? "canvas";
           const boardImages = imagesByBoard[imageKey] ?? [];
-          const imageCount = boardImages.length;
+          const boardLinks = linksByBoard[imageKey] ?? [];
+          const boardQuotesList = quotesByBoard[imageKey] ?? [];
+          const boardItemCount =
+            variant === "canvas"
+              ? boardImages.length
+              : variant === "links"
+                ? boardLinks.length
+                : boardQuotesList.length;
           const selectedImage = boardImages.find((image) => image.id === selectedImageId);
 
           return (
@@ -1560,7 +1938,7 @@ export default function Home() {
               <span className="frameLabel">
                 {`${
                   theme === "minimal" ? formatMinimalSentenceCase(item.label) : item.label
-                }[${imageCount}]`}
+                }[${boardItemCount}]`}
               </span>
               <span className="frameRect">
                 <span className="frameContent" aria-hidden={!isActive}>
@@ -1655,7 +2033,7 @@ export default function Home() {
                         </>
                       )}
                     </span>
-                    {canEdit ? (
+                    {canEdit && variant === "canvas" ? (
                       <span className="canvasActions">
                         {selectedImage ? (
                           <button
@@ -1694,82 +2072,270 @@ export default function Home() {
                       </span>
                     ) : null}
                   </span>
-                  <span
-                    className="imageCanvas"
-                    onPointerDown={clearCanvasSelection}
-                    onContextMenu={(event) => {
-                      if (canEdit) event.preventDefault();
-                    }}
-                  >
-                    {boardImages.map((image) => (
-                      <span
-                        key={image.id}
-                        className="imageItem"
-                        data-selected={canEdit && selectedImageId === image.id}
-                        onClick={(event) => {
-                          if (canEdit) event.stopPropagation();
-                        }}
-                        style={
-                          {
-                            left: `${image.x}%`,
-                            top: `${image.y}%`,
-                            width: `${image.width}%`,
-                            "--image-rotation": `${image.rotation}deg`,
-                          } as CSSProperties
-                        }
-                        onPointerDown={(event) => startDrag(event, imageKey, image.id)}
-                      >
-                        <img className="canvasImage" src={image.src} alt="" draggable={false} />
-                        {canEdit ? (
-                          <>
-                            <span
-                              className="imageControls"
-                              onPointerDown={(event) => event.stopPropagation()}
-                            >
-                              <button
-                                className="imageControl"
-                                type="button"
-                                aria-label="Rotate left"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  rotateImage(imageKey, image.id, -15);
-                                }}
+                  {variant === "canvas" ? (
+                    <span
+                      className="imageCanvas"
+                      onPointerDown={clearCanvasSelection}
+                      onContextMenu={(event) => {
+                        if (canEdit) event.preventDefault();
+                      }}
+                    >
+                      {boardImages.map((image) => (
+                        <span
+                          key={image.id}
+                          className="imageItem"
+                          data-selected={canEdit && selectedImageId === image.id}
+                          onClick={(event) => {
+                            if (canEdit) event.stopPropagation();
+                          }}
+                          style={
+                            {
+                              left: `${image.x}%`,
+                              top: `${image.y}%`,
+                              width: `${image.width}%`,
+                              "--image-rotation": `${image.rotation}deg`,
+                            } as CSSProperties
+                          }
+                          onPointerDown={(event) => startDrag(event, imageKey, image.id)}
+                        >
+                          <img className="canvasImage" src={image.src} alt="" draggable={false} />
+                          {canEdit ? (
+                            <>
+                              <span
+                                className="imageControls"
+                                onPointerDown={(event) => event.stopPropagation()}
                               >
-                                -15
-                              </button>
-                              <button
-                                className="imageControl"
-                                type="button"
-                                aria-label="Rotate right"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  rotateImage(imageKey, image.id, 15);
-                                }}
+                                <button
+                                  className="imageControl"
+                                  type="button"
+                                  aria-label="Rotate left"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    rotateImage(imageKey, image.id, -15);
+                                  }}
+                                >
+                                  -15
+                                </button>
+                                <button
+                                  className="imageControl"
+                                  type="button"
+                                  aria-label="Rotate right"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    rotateImage(imageKey, image.id, 15);
+                                  }}
+                                >
+                                  +15
+                                </button>
+                                <button
+                                  className="imageControl"
+                                  type="button"
+                                  aria-label="Delete image"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void removeImage(imageKey, image.id);
+                                  }}
+                                >
+                                  x
+                                </button>
+                              </span>
+                              <span
+                                className="resizeHandle"
+                                aria-hidden="true"
+                                onPointerDown={(event) => startResize(event, imageKey, image.id)}
+                              />
+                            </>
+                          ) : null}
+                        </span>
+                      ))}
+                    </span>
+                  ) : variant === "links" ? (
+                    <div
+                      className="textBoardSurface textBoardSurface--links"
+                      onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
+                    >
+                      {canEdit && isActive ? (
+                        <form
+                          className="linkComposer"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            addLinkFromDraft(item.id);
+                          }}
+                        >
+                          <label className="srOnly" htmlFor={`link-url-${item.id}`}>
+                            Link URL
+                          </label>
+                          <input
+                            id={`link-url-${item.id}`}
+                            className="linkComposerInput linkComposerInput--url"
+                            type="url"
+                            inputMode="url"
+                            autoComplete="url"
+                            placeholder={theme === "minimal" ? "Paste a URL" : "PASTE A URL"}
+                            value={linkDraft.url}
+                            onChange={(event) =>
+                              setLinkDraft((d) => ({ ...d, url: event.target.value }))
+                            }
+                          />
+                          <label className="srOnly" htmlFor={`link-title-${item.id}`}>
+                            Optional title
+                          </label>
+                          <input
+                            id={`link-title-${item.id}`}
+                            className="linkComposerInput"
+                            type="text"
+                            placeholder={theme === "minimal" ? "Title (optional)" : "TITLE (OPTIONAL)"}
+                            value={linkDraft.title}
+                            onChange={(event) =>
+                              setLinkDraft((d) => ({ ...d, title: event.target.value }))
+                            }
+                          />
+                          <label className="srOnly" htmlFor={`link-note-${item.id}`}>
+                            Optional note
+                          </label>
+                          <input
+                            id={`link-note-${item.id}`}
+                            className="linkComposerInput"
+                            type="text"
+                            placeholder={theme === "minimal" ? "Note (optional)" : "NOTE (OPTIONAL)"}
+                            value={linkDraft.note}
+                            onChange={(event) =>
+                              setLinkDraft((d) => ({ ...d, note: event.target.value }))
+                            }
+                          />
+                          <button className="textBoardSubmit" type="submit">
+                            {theme === "minimal" ? "Save link" : "SAVE LINK"}
+                          </button>
+                        </form>
+                      ) : null}
+                      {boardLinks.length === 0 ? (
+                        <p className="textBoardEmpty">
+                          {theme === "minimal"
+                            ? "No links saved for this month yet."
+                            : "NO LINKS YET FOR THIS MONTH."}
+                        </p>
+                      ) : (
+                        <ul className="linkCardList">
+                          {boardLinks.map((entry) => (
+                            <li key={entry.id} className="linkCard">
+                              <a
+                                className="linkCardAnchor"
+                                href={entry.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
                               >
-                                +15
-                              </button>
-                              <button
-                                className="imageControl"
-                                type="button"
-                                aria-label="Delete image"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  void removeImage(imageKey, image.id);
-                                }}
-                              >
-                                x
-                              </button>
-                            </span>
-                            <span
-                              className="resizeHandle"
-                              aria-hidden="true"
-                              onPointerDown={(event) => startResize(event, imageKey, image.id)}
-                            />
-                          </>
-                        ) : null}
-                      </span>
-                    ))}
-                  </span>
+                                <span className="linkCardHost">{linkHostname(entry.url)}</span>
+                                <span className="linkCardTitle">
+                                  {linkDisplayHeading(entry.url, entry.title)}
+                                </span>
+                                <span className="linkCardUrl" title={entry.url}>
+                                  {entry.url}
+                                </span>
+                              </a>
+                              {entry.note.trim() ? (
+                                <p className="linkCardNote">{entry.note}</p>
+                              ) : null}
+                              {canEdit ? (
+                                <button
+                                  className="linkCardRemove"
+                                  type="button"
+                                  aria-label="Remove link"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void removeLinkEntry(imageKey, entry.id);
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  ) : (
+                    <div
+                      className="textBoardSurface textBoardSurface--quotes"
+                      onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}
+                    >
+                      {canEdit && isActive ? (
+                        <form
+                          className="quoteComposer"
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            addQuoteFromDraft(item.id);
+                          }}
+                        >
+                          <label className="srOnly" htmlFor={`quote-text-${item.id}`}>
+                            Quote text
+                          </label>
+                          <textarea
+                            id={`quote-text-${item.id}`}
+                            className="quoteComposerTextarea"
+                            rows={3}
+                            placeholder={
+                              theme === "minimal" ? "A line worth keeping…" : "A LINE WORTH KEEPING…"
+                            }
+                            value={quoteDraft.text}
+                            onChange={(event) =>
+                              setQuoteDraft((d) => ({ ...d, text: event.target.value }))
+                            }
+                          />
+                          <label className="srOnly" htmlFor={`quote-source-${item.id}`}>
+                            Source (optional)
+                          </label>
+                          <input
+                            id={`quote-source-${item.id}`}
+                            className="quoteComposerSource"
+                            type="text"
+                            placeholder={
+                              theme === "minimal" ? "Source (optional)" : "SOURCE (OPTIONAL)"
+                            }
+                            value={quoteDraft.source}
+                            onChange={(event) =>
+                              setQuoteDraft((d) => ({ ...d, source: event.target.value }))
+                            }
+                          />
+                          <button className="textBoardSubmit" type="submit">
+                            {theme === "minimal" ? "Save quote" : "SAVE QUOTE"}
+                          </button>
+                        </form>
+                      ) : null}
+                      {boardQuotesList.length === 0 ? (
+                        <p className="textBoardEmpty">
+                          {theme === "minimal"
+                            ? "No quotes saved for this month yet."
+                            : "NO QUOTES YET FOR THIS MONTH."}
+                        </p>
+                      ) : (
+                        <ul className="quoteCardList">
+                          {boardQuotesList.map((entry) => (
+                            <li key={entry.id} className="quoteCard">
+                              <blockquote className="quoteCardBody">{entry.text}</blockquote>
+                              {entry.source.trim() ? (
+                                <cite className="quoteCardSource">{entry.source}</cite>
+                              ) : null}
+                              {canEdit ? (
+                                <button
+                                  className="quoteCardRemove"
+                                  type="button"
+                                  aria-label="Remove quote"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void removeQuoteEntry(imageKey, entry.id);
+                                  }}
+                                >
+                                  ×
+                                </button>
+                              ) : null}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                 </span>
               </span>
             </article>

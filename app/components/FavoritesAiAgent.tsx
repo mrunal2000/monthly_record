@@ -7,7 +7,9 @@ import {
   buildAgentVisionImageRefs,
   type AgentCategoryMeta,
   type AgentFavoriteImageSnap,
+  type AgentLinkSnap,
   type AgentMonthMeta,
+  type AgentQuoteSnap,
 } from "../lib/agentContext";
 import AiChatMarkdown from "./AiChatMarkdown";
 
@@ -89,6 +91,8 @@ export type FavoritesAiAgentProps = {
   months: AgentMonthMeta[];
   categories: AgentCategoryMeta[];
   imagesByBoard: Record<string, AgentFavoriteImageSnap[]>;
+  linksByBoard: Record<string, AgentLinkSnap[]>;
+  quotesByBoard: Record<string, AgentQuoteSnap[]>;
   theme: ThemeName;
 };
 
@@ -96,11 +100,17 @@ export default function FavoritesAiAgent({
   months,
   categories,
   imagesByBoard,
+  linksByBoard,
+  quotesByBoard,
   theme,
 }: FavoritesAiAgentProps) {
   const contextBlock = useMemo(
-    () => buildAgentFavoritesContext(months, categories, imagesByBoard),
-    [months, categories, imagesByBoard],
+    () =>
+      buildAgentFavoritesContext(months, categories, imagesByBoard, {
+        linksByBoard,
+        quotesByBoard,
+      }),
+    [months, categories, imagesByBoard, linksByBoard, quotesByBoard],
   );
   const visionRefs = useMemo(
     () => buildAgentVisionImageRefs(months, categories, imagesByBoard),
