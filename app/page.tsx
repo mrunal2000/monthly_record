@@ -119,7 +119,7 @@ const DEFAULT_CATEGORIES: Category[] = [
   },
   {
     id: "restaurants",
-    label: "RESTAURANTS",
+    label: "Restaurants",
     note: "Search for a place, then save an OpenStreetMap link to that spot.",
     color: "var(--category-restaurants)",
     textColor: "var(--category-on-dark)",
@@ -159,6 +159,17 @@ function upgradeLegacyLinksFrameCategories(categories: Category[]): Category[] {
     if (cat.id !== "rabbit-holes") return cat;
     if (!LEGACY_RABBIT_HOLES_LABELS.has(cat.label)) return cat;
     return { ...cat, label: def.label, note: def.note };
+  });
+}
+
+/** Default frame was all-caps before switching to sentence case. */
+function upgradeLegacyRestaurantsLabels(categories: Category[]): Category[] {
+  const def = DEFAULT_CATEGORIES.find((c) => c.id === RESTAURANTS_NOMINATIM_CATEGORY_ID);
+  if (!def) return categories;
+  return categories.map((cat) => {
+    if (cat.id !== RESTAURANTS_NOMINATIM_CATEGORY_ID) return cat;
+    if (cat.label !== "RESTAURANTS") return cat;
+    return { ...cat, label: def.label, note: cat.note || def.note };
   });
 }
 
@@ -473,11 +484,17 @@ function formatMinimalSentenceCase(label: string) {
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 }
 
-/** Paper / brutalist default to ALL CAPS on blur; links board keeps sentence case. */
+/** Paper / brutalist default to ALL CAPS on blur; links boards keep sentence case. */
 function normalizeFrameTitleOnBlur(raw: string, theme: ThemeName, categoryId: string) {
   const t = raw.trim();
   if (!t) return t;
-  if (theme === "minimal" || categoryId === "rabbit-holes") return formatMinimalSentenceCase(t);
+  if (
+    theme === "minimal" ||
+    categoryId === "rabbit-holes" ||
+    categoryId === RESTAURANTS_NOMINATIM_CATEGORY_ID
+  ) {
+    return formatMinimalSentenceCase(t);
+  }
   return t.toUpperCase();
 }
 
@@ -546,7 +563,7 @@ function upgradeFoodCategoryToRestaurants(categories: Category[]): Category[] {
       out.push({
         ...c,
         id: RESTAURANTS_NOMINATIM_CATEGORY_ID,
-        label: def?.label ?? "RESTAURANTS",
+        label: def?.label ?? "Restaurants",
         note: def?.note ?? c.note,
         color: def?.color ?? "var(--category-restaurants)",
         textColor: def?.textColor ?? c.textColor,
@@ -1140,7 +1157,9 @@ export default function Home() {
           }
         }
         setCategories(
-          upgradeLegacyLinksFrameCategories(upgradeFoodCategoryToRestaurants(next)),
+          upgradeLegacyLinksFrameCategories(
+            upgradeLegacyRestaurantsLabels(upgradeFoodCategoryToRestaurants(next)),
+          ),
         );
       }
     } catch {

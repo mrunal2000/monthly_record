@@ -524,9 +524,9 @@ body {
 .accordion {
   position: relative;
   z-index: 1;
-  width: min(88vw, 720px);
-  height: min(78vh, 680px);
-  min-height: 360px;
+  width: min(88vw, min(680px, calc(100vw - 32px)));
+  height: min(72vh, min(600px, calc(100svh - 160px)));
+  min-height: min(360px, max(280px, 36dvh));
   display: flex;
   align-items: flex-end;
   gap: var(--accordion-gap);
@@ -534,11 +534,32 @@ body {
 }
 
 @media (min-width: 768px) {
+  /*
+   Short laptop viewports used to cap the accordion to the visible area, which crushed .frameRect.
+   Prefer a comfortable minimum height and let the main scroll when the stack is taller than the window.
+  */
+  .page:not(.page--yearOverview) {
+    padding-top: max(
+      clamp(52px, 8vw, 86px),
+      calc(var(--top-frame-height) + clamp(52px, 9vmin, 88px))
+    );
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
   .accordion {
     box-sizing: border-box;
-    width: min(920px, calc(100vw - var(--month-rail-width) - clamp(28px, 5vw, 64px)));
-    height: min(86vh, 820px);
+    width: min(
+      780px,
+      calc(100vw - var(--month-rail-width) - clamp(24px, 4.5vw, 56px))
+    );
+    /* 720px floor for laptop canvases; taller when the viewport allows; scroll main.page when needed. */
+    min-height: 520px;
+    height: max(520px, min(640px, 92vh, 92dvh));
+    max-height: none;
     margin-inline: auto;
+    margin-top: clamp(4px, 1.2vmin, 14px);
+    margin-bottom: clamp(16px, 3vmin, 40px);
   }
 
   /*
@@ -548,7 +569,7 @@ body {
   */
   .frame {
     box-sizing: border-box;
-    --frame-spine: clamp(44px, 9vw, 72px);
+    --frame-spine: clamp(50px, 9.5vw, 78px);
     padding-top: var(--frame-spine);
     overflow: visible;
   }
@@ -567,8 +588,8 @@ body {
     z-index: 2;
     overflow: visible;
     text-overflow: unset;
-    font-size: 12px;
-    line-height: 16px;
+    font-size: clamp(10px, 1vw, 11px);
+    line-height: 14px;
     letter-spacing: 0;
   }
 
