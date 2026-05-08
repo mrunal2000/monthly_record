@@ -46,12 +46,15 @@ type LinkEntry = {
   url: string;
   title: string;
   note: string;
+  /** Local / client time; used for ${year} overview. Server rows infer from created_at when loading. */
+  addedAtMs?: number;
 };
 
 type QuoteEntry = {
   id: string;
   text: string;
   source: string;
+  addedAtMs?: number;
 };
 
 const CATEGORIES_STORAGE_KEY = "monthly-record-categories";
@@ -143,6 +146,8 @@ type CanvasImage = {
   y: number;
   width: number;
   rotation: number;
+  /** Set on upload; synced from Supabase created_at when present. Items without date still appear in the year overview (legacy). */
+  addedAtMs?: number;
 };
 
 type FavoriteItemRow = {
@@ -157,6 +162,7 @@ type FavoriteItemRow = {
   y: number;
   width: number;
   rotation: number;
+  created_at?: string | null;
 };
 
 type DragState = {
@@ -243,6 +249,68 @@ const months = [
   { id: "nov", label: "NOV" },
   { id: "dec", label: "DEC" },
 ];
+
+/** Extra rail slot after December: aggregated calendar-year overview (index === months.length). */
+const YEAR_OVERVIEW_SLOT_INDEX = months.length;
+/** Year MEDIA recap: tight grid of cells (design: 10 cols × N rows, min 6 rows). */
+const YEAR_MEDIA_GRID_COLUMNS = 10;
+const YEAR_MEDIA_GRID_MIN_ROWS = 6;
+
+function belongsInOverviewYear(addedAtMs: number | undefined, overviewYear: number): boolean {
+  if (addedAtMs === undefined) return true;
+  return new Date(addedAtMs).getFullYear() === overviewYear;
+}
+
+function mergeImagesForYearCategory(
+  boards: Record<string, CanvasImage[]>,
+  categoryId: string,
+  monthIds: readonly string[],
+  overviewYear: number,
+): CanvasImage[] {
+  const byId = new Map<string, CanvasImage>();
+  for (const monthId of monthIds) {
+    const key = `${monthId}-${categoryId}`;
+    for (const img of boards[key] ?? []) {
+      if (!belongsInOverviewYear(img.addedAtMs, overviewYear)) continue;
+      byId.set(img.id, img);
+    }
+  }
+  return [...byId.values()];
+}
+
+function mergeLinksForYearCategory(
+  boards: Record<string, LinkEntry[]>,
+  categoryId: string,
+  monthIds: readonly string[],
+  overviewYear: number,
+): LinkEntry[] {
+  const byId = new Map<string, LinkEntry>();
+  for (const monthId of monthIds) {
+    const key = `${monthId}-${categoryId}`;
+    for (const e of boards[key] ?? []) {
+      if (!belongsInOverviewYear(e.addedAtMs, overviewYear)) continue;
+      byId.set(e.id, e);
+    }
+  }
+  return [...byId.values()];
+}
+
+function mergeQuotesForYearCategory(
+  boards: Record<string, QuoteEntry[]>,
+  categoryId: string,
+  monthIds: readonly string[],
+  overviewYear: number,
+): QuoteEntry[] {
+  const byId = new Map<string, QuoteEntry>();
+  for (const monthId of monthIds) {
+    const key = `${monthId}-${categoryId}`;
+    for (const e of boards[key] ?? []) {
+      if (!belongsInOverviewYear(e.addedAtMs, overviewYear)) continue;
+      byId.set(e.id, e);
+    }
+  }
+  return [...byId.values()];
+}
 
 /** Title-case month id for MINIMAL rail (horizontal, non-all-caps). */
 function formatMonthNavLabel(monthId: string) {
@@ -389,6 +457,7 @@ function parseLinksFromStorage(raw: string | null): Record<string, LinkEntry[]> 
           url: typeof row.url === "string" ? row.url : "",
           title: typeof row.title === "string" ? row.title : "",
           note: typeof row.note === "string" ? row.note : "",
+          addedAtMs: typeof row.addedAtMs === "number" && Number.isFinite(row.addedAtMs) ? row.addedAtMs : undefined,
         }))
         .filter((e) => e.url.trim());
     }
@@ -412,6 +481,7 @@ function parseQuotesFromStorage(raw: string | null): Record<string, QuoteEntry[]
           id: typeof row.id === "string" && row.id.trim() ? row.id : crypto.randomUUID(),
           text: typeof row.text === "string" ? row.text : "",
           source: typeof row.source === "string" ? row.source : "",
+          addedAtMs: typeof row.addedAtMs === "number" && Number.isFinite(row.addedAtMs) ? row.addedAtMs : undefined,
         }))
         .filter((e) => e.text.trim());
     }
@@ -426,6 +496,7 @@ type BoardTextRow = {
   board_key: string;
   kind: "link" | "quote";
   payload: Record<string, unknown>;
+  created_at?: string | null;
 };
 
 function getActiveFrameShareToken(
@@ -545,7 +616,69 @@ export default function Home() {
     y: number;
     width: number;
   } | null>(null);
-  const activeMonth = months[activeMonthIndex];
+  /** Fixed at mount; aligns overview tab label with calendar year users expect. */
+  const calendarOverviewYear = useMemo(() => new Date().getFullYear(), []);
+  const isYearOverview = activeMonthIndex === YEAR_OVERVIEW_SLOT_INDEX;
+  const activeMonth = !isYearOverview ? (months[activeMonthIndex] ?? null) : null;
+
+  const monthIds = useMemo(() => months.map((m) => m.id), []);
+
+  const yearMergedBoards = useMemo(() => {
+    return categories.map((cat) => {
+      const variant = cat.variant ?? "canvas";
+      if (variant === "links") {
+        return {
+          cat,
+          variant,
+          images: [] as CanvasImage[],
+          links: mergeLinksForYearCategory(linksByBoard, cat.id, monthIds, calendarOverviewYear),
+          quotes: [] as QuoteEntry[],
+        };
+      }
+      if (variant === "quotes") {
+        return {
+          cat,
+          variant,
+          images: [] as CanvasImage[],
+          links: [] as LinkEntry[],
+          quotes: mergeQuotesForYearCategory(quotesByBoard, cat.id, monthIds, calendarOverviewYear),
+        };
+      }
+      return {
+        cat,
+        variant,
+        images: mergeImagesForYearCategory(imagesByBoard, cat.id, monthIds, calendarOverviewYear),
+        links: [] as LinkEntry[],
+        quotes: [] as QuoteEntry[],
+      };
+    });
+  }, [categories, imagesByBoard, linksByBoard, quotesByBoard, monthIds, calendarOverviewYear]);
+
+  const safeYearBoardIndex = clamp(activeIndex, 0, Math.max(0, yearMergedBoards.length - 1));
+  const selectedYearBoard =
+    yearMergedBoards.length > 0 ? (yearMergedBoards[safeYearBoardIndex] ?? null) : null;
+
+  const yearMediaGridSlots = useMemo<(CanvasImage | null)[] | null>(() => {
+    if (!selectedYearBoard || selectedYearBoard.variant !== "canvas") return null;
+    const imgs = selectedYearBoard.images;
+    const cols = YEAR_MEDIA_GRID_COLUMNS;
+    const rows = Math.max(YEAR_MEDIA_GRID_MIN_ROWS, Math.ceil(imgs.length / cols));
+    const total = rows * cols;
+    const slots = imgs.slice(0, total) as (CanvasImage | null)[];
+    while (slots.length < total) slots.push(null);
+    return slots;
+  }, [selectedYearBoard]);
+
+  const yearOverviewTotalCount = useMemo(
+    () =>
+      yearMergedBoards.reduce((sum, row) => {
+        if (row.variant === "canvas") return sum + row.images.length;
+        if (row.variant === "links") return sum + row.links.length;
+        return sum + row.quotes.length;
+      }, 0),
+    [yearMergedBoards],
+  );
+
   const canEdit = Boolean(user) || ALLOW_LOCAL_EDIT_WITHOUT_AUTH;
   const wideLayout = useWideLayout(768);
 
@@ -626,7 +759,7 @@ export default function Home() {
   }, [wideLayout]);
 
   useEffect(() => {
-    if (wideLayout) return;
+    if (wideLayout || isYearOverview) return;
     const el = frameArticleRefs.current[activeIndex];
     if (!el) return;
     if (skipMobileFrameScrollIntoViewRef.current) {
@@ -637,7 +770,24 @@ export default function Home() {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     });
     return () => window.cancelAnimationFrame(id);
-  }, [activeIndex, wideLayout, activeMonth.id]);
+  }, [activeIndex, wideLayout, isYearOverview, activeMonth?.id]);
+
+  useEffect(() => {
+    if (!isYearOverview) return;
+    function onKey(event: KeyboardEvent) {
+      const tag = (event.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+      if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+        event.preventDefault();
+        setActiveIndex((i) => clamp(i - 1, 0, Math.max(0, categories.length - 1)));
+      } else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+        event.preventDefault();
+        setActiveIndex((i) => clamp(i + 1, 0, Math.max(0, categories.length - 1)));
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isYearOverview, categories.length]);
 
   useEffect(() => {
     imagesByBoardRef.current = imagesByBoard;
@@ -765,7 +915,9 @@ export default function Home() {
 
       const { data, error } = await supabase
         .from(FAVORITES_TABLE)
-        .select("id, board_key, month_id, category_index, category_label, image_url, storage_path, x, y, width, rotation")
+        .select(
+          "id, board_key, month_id, category_index, category_label, image_url, storage_path, x, y, width, rotation, created_at",
+        )
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -788,6 +940,7 @@ export default function Home() {
               y: row.y,
               width: row.width,
               rotation: row.rotation,
+              addedAtMs: row.created_at ? new Date(row.created_at).getTime() : undefined,
             },
           ];
 
@@ -834,7 +987,7 @@ export default function Home() {
 
       const { data, error } = await supabase
         .from(BOARD_TEXT_TABLE)
-        .select("id, board_key, kind, payload")
+        .select("id, board_key, kind, payload, created_at")
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -857,6 +1010,7 @@ export default function Home() {
               url,
               title: typeof p.title === "string" ? p.title : "",
               note: typeof p.note === "string" ? p.note : "",
+              addedAtMs: row.created_at ? new Date(row.created_at).getTime() : undefined,
             };
             remoteLinks[key] = [...(remoteLinks[key] ?? []), entry];
           } else if (row.kind === "quote") {
@@ -866,6 +1020,7 @@ export default function Home() {
               id: row.id,
               text,
               source: typeof p.source === "string" ? p.source : "",
+              addedAtMs: row.created_at ? new Date(row.created_at).getTime() : undefined,
             };
             remoteQuotes[key] = [...(remoteQuotes[key] ?? []), entry];
           }
@@ -1043,6 +1198,7 @@ export default function Home() {
             y: 28 + ((existing.length + fileIndex) % 3) * 10,
             width: 30,
             rotation: 0,
+            addedAtMs: Date.now(),
           };
         }),
       );
@@ -1528,6 +1684,7 @@ export default function Home() {
       url,
       title: linkDraft.title.trim(),
       note: linkDraft.note.trim(),
+      addedAtMs: Date.now(),
     };
 
     setLinksByBoard((current) => ({
@@ -1559,6 +1716,7 @@ export default function Home() {
       id: crypto.randomUUID(),
       text,
       source: quoteDraft.source.trim(),
+      addedAtMs: Date.now(),
     };
 
     setQuotesByBoard((current) => ({
@@ -1712,6 +1870,7 @@ export default function Home() {
         "page",
         user && "page--signedIn",
         canEdit && wideLayout && "page--desktopEditChrome",
+        isYearOverview ? "page--yearOverview" : "",
         ALLOW_LOCAL_EDIT_WITHOUT_AUTH && !user ? "page--localEditWithoutAuth" : "",
       ]
         .filter(Boolean)
@@ -1841,6 +2000,24 @@ export default function Home() {
               </button>
             );
           })}
+          <button
+            key="__year-overview__"
+            className="monthButton monthButton--year"
+            type="button"
+            data-active={activeMonthIndex === YEAR_OVERVIEW_SLOT_INDEX ? "true" : undefined}
+            aria-label={`${calendarOverviewYear} year overview`}
+            onClick={() => {
+              setActiveMonthIndex(YEAR_OVERVIEW_SLOT_INDEX);
+              setSelectedImageId(null);
+            }}
+          >
+            <span aria-hidden="true">{calendarOverviewYear}</span>
+            {yearOverviewTotalCount === 0 ? (
+              <span className="monthCountBadge" aria-hidden="true">
+                {theme === "minimal" ? "0" : "[0]"}
+              </span>
+            ) : null}
+          </button>
         </nav>
       </header>
       {editMode || user ? (
@@ -1921,7 +2098,7 @@ export default function Home() {
         ) : null
       ) : null}
 
-      {canEdit ? (
+      {canEdit && !isYearOverview ? (
         <div className="frameManagerBar" onPointerDown={(event) => event.stopPropagation()}>
           <label className="srOnly" htmlFor="new-frame-name">
             New frame name
@@ -1946,6 +2123,153 @@ export default function Home() {
         </div>
       ) : null}
 
+      {isYearOverview ? (
+        <section
+          className="yearOverview"
+          aria-label={`${calendarOverviewYear} favorites by category`}
+        >
+          <div className="yearOverviewWorkspace">
+            <nav className="yearCategoryTabs" role="tablist" aria-label="Categories">
+              <div className="yearCategoryTabsScroll">
+                {yearMergedBoards.map((row, index) => {
+                  const count =
+                    row.variant === "canvas"
+                      ? row.images.length
+                      : row.variant === "links"
+                        ? row.links.length
+                        : row.quotes.length;
+                  const isSelected = index === activeIndex;
+                  return (
+                    <button
+                      key={row.cat.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={isSelected}
+                      className="yearCategoryTab"
+                      data-active={isSelected ? "true" : undefined}
+                      onClick={() => {
+                        setActiveIndex(index);
+                        setSelectedImageId(null);
+                      }}
+                    >
+                      <span className="yearCategoryTabLabel">
+                        {theme === "minimal"
+                          ? formatMinimalSentenceCase(row.cat.label)
+                          : row.cat.label}
+                      </span>
+                      <span className="yearCategoryTabCount">{count}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </nav>
+            <header
+              className={[
+                "yearOverviewWorkspaceHeader",
+                selectedYearBoard?.variant === "canvas" ? "yearOverviewWorkspaceHeader--dense" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            >
+              <p className="yearOverviewWorkspaceMeta">
+                {theme === "minimal"
+                  ? `${calendarOverviewYear} · All months`
+                  : `${calendarOverviewYear} · ALL MONTHS`}
+              </p>
+              {selectedYearBoard ? (
+                <>
+                  <h2 className="yearOverviewWorkspaceTitle">
+                    {theme === "minimal"
+                      ? formatMinimalSentenceCase(selectedYearBoard.cat.label)
+                      : selectedYearBoard.cat.label}
+                  </h2>
+                  <p className="yearOverviewWorkspaceNote">{selectedYearBoard.cat.note}</p>
+                </>
+              ) : null}
+            </header>
+            <div className="yearOverviewWorkspaceBody yearOverviewWorkspaceBody--mediaFlush">
+              {!selectedYearBoard ? (
+                <p className="yearOverviewEmpty">{theme === "minimal" ? "No categories." : "NO CATEGORIES"}</p>
+              ) : selectedYearBoard.variant === "canvas" ? (
+                yearMediaGridSlots ? (
+                  <div
+                    className="yearMediaGrid"
+                    style={
+                      {
+                        "--year-media-cols": YEAR_MEDIA_GRID_COLUMNS,
+                      } as CSSProperties
+                    }
+                  >
+                    {yearMediaGridSlots.map((image, slotIndex) => (
+                      <div
+                        key={image?.id ?? `year-slot-${selectedYearBoard.cat.id}-${slotIndex}`}
+                        className="yearMediaGridCell"
+                      >
+                        {image ? (
+                          <img
+                            className="yearMediaGridCellImg"
+                            src={image.src}
+                            alt=""
+                            loading="lazy"
+                            draggable={false}
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null
+              ) : selectedYearBoard.variant === "links" ? (
+                selectedYearBoard.links.length > 0 ? (
+                  <div className="yearEntryGrid yearEntryGrid--links">
+                    {selectedYearBoard.links.map((entry) => (
+                      <div key={entry.id} className="yearGridLinkCard">
+                        <a
+                          className="yearGridLinkAnchor"
+                          href={entry.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <span className="linkCardHost">{linkHostname(entry.url)}</span>
+                          <span className="linkCardTitle">
+                            {linkDisplayHeading(entry.url, entry.title)}
+                          </span>
+                          <span className="linkCardUrl" title={entry.url}>
+                            {entry.url}
+                          </span>
+                        </a>
+                        {entry.note.trim() ? <p className="linkCardNote">{entry.note}</p> : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="yearOverviewEmpty">
+                    {theme === "minimal"
+                      ? `No links from ${calendarOverviewYear}.`
+                      : `NO LINKS FROM ${calendarOverviewYear}.`}
+                  </p>
+                )
+              ) : selectedYearBoard.quotes.length > 0 ? (
+                <div className="yearEntryGrid yearEntryGrid--quotes">
+                  {selectedYearBoard.quotes.map((entry) => (
+                    <blockquote key={entry.id} className="yearGridQuoteCard">
+                      <p className="yearGridQuoteBody">{entry.text}</p>
+                      {entry.source.trim() ? (
+                        <cite className="yearGridQuoteSource">{entry.source}</cite>
+                      ) : null}
+                    </blockquote>
+                  ))}
+                </div>
+              ) : (
+                <p className="yearOverviewEmpty">
+                  {theme === "minimal"
+                    ? `No quotes from ${calendarOverviewYear}.`
+                    : `NO QUOTES FROM ${calendarOverviewYear}.`}
+                </p>
+              )}
+            </div>
+          </div>
+        </section>
+      ) : activeMonth ? (
       <section
         key={activeMonth.id}
         className="accordion"
@@ -2459,6 +2783,7 @@ export default function Home() {
           );
         })}
       </section>
+      ) : null}
     </main>
   );
 }

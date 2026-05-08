@@ -53,6 +53,9 @@ body {
 .themeSelect,
 .monthButton,
 .monthCountBadge,
+.yearCategoryTab,
+.yearCategoryTabLabel,
+.yearCategoryTabCount,
 .frameManagerInput,
 .frameManagerInput::placeholder,
 .frameManagerButton,
@@ -592,6 +595,374 @@ body {
     opacity: 1;
     transform: translateY(0) scale(1);
   }
+}
+
+.page.page--yearOverview {
+  align-items: start;
+  justify-items: center;
+}
+
+.yearOverview {
+  position: relative;
+  z-index: 1;
+  width: min(96vw, 1100px);
+  min-height: min(620px, calc(100svh - clamp(104px, 18vh, 168px)));
+  max-height: calc(100svh - clamp(104px, 18vh, 168px));
+  margin-inline: auto;
+  margin-top: clamp(8px, 2vw, 14px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  border: var(--frame-border-width) solid var(--ink);
+  background: color-mix(in srgb, var(--bg) 94%, var(--ink));
+  animation: monthChange 260ms cubic-bezier(0.215, 0.61, 0.355, 1);
+  overflow: hidden;
+}
+
+.yearCategoryTabs {
+  flex: 0 0 auto;
+  border-bottom: var(--frame-border-width) solid var(--ink);
+  background: var(--bg);
+}
+
+.yearCategoryTabsScroll {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  gap: 0;
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.yearCategoryTab {
+  position: relative;
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  min-height: 40px;
+  padding: 0 clamp(12px, 2.2vw, 18px);
+  border: 0;
+  border-right: var(--frame-border-width) solid var(--ink);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
+}
+
+.yearCategoryTab:last-child {
+  border-right: 0;
+}
+
+.yearCategoryTab:hover,
+.yearCategoryTab[data-active="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.yearCategoryTab:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: -4px;
+}
+
+.yearCategoryTabLabel {
+  font: inherit;
+  font-weight: 400;
+}
+
+.yearCategoryTabCount {
+  font: inherit;
+  font-size: 9px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.52;
+}
+
+.yearCategoryTab:hover .yearCategoryTabCount,
+.yearCategoryTab[data-active="true"] .yearCategoryTabCount {
+  opacity: 0.68;
+}
+
+.yearOverviewWorkspace {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: min(620px, calc(100svh - clamp(104px, 18vh, 168px)));
+  background: var(--bg);
+}
+
+.yearOverviewWorkspaceHeader {
+  flex: 0 0 auto;
+  padding: clamp(14px, 2.5vw, 22px);
+  border-bottom: 1px solid color-mix(in srgb, var(--ink) 16%, transparent);
+}
+
+.yearOverviewWorkspaceHeader--dense {
+  padding-block: clamp(10px, 2vw, 14px);
+  padding-inline: clamp(12px, 2vw, 18px);
+}
+
+.yearOverviewWorkspaceHeader--dense .yearOverviewWorkspaceMeta {
+  margin-bottom: 6px;
+}
+
+.yearOverviewWorkspaceHeader--dense .yearOverviewWorkspaceNote {
+  display: none;
+}
+
+.yearOverviewWorkspaceMeta {
+  margin: 0 0 10px;
+  font-family: var(--font-chrome, var(--font-body));
+  font-size: clamp(9px, 1.35vw, 10px);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.yearOverviewWorkspaceTitle {
+  margin: 0;
+  font-family: var(--font-frame-display, var(--font-body));
+  font-size: clamp(20px, 3.8vw, 34px);
+  line-height: 1.06;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--ink);
+}
+
+.yearOverviewWorkspaceHeader--dense .yearOverviewWorkspaceTitle {
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+html[data-theme="minimal"] .yearOverviewWorkspaceHeader--dense .yearOverviewWorkspaceTitle {
+  text-transform: none;
+  font-weight: 600;
+}
+
+.yearOverviewWorkspaceNote {
+  margin: 10px 0 0;
+  font-size: clamp(11px, 1.65vw, 13px);
+  line-height: 1.42;
+  color: var(--ink);
+  opacity: 0.74;
+  max-width: 60ch;
+}
+
+.yearOverviewWorkspaceBody {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: clamp(12px, 2vw, 20px);
+}
+
+/** Flush with header rule for fixed-column media matrix (screenshot-style). */
+.yearOverviewWorkspaceBody--mediaFlush {
+  padding: 0;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.yearMediaGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--year-media-cols, 10), minmax(0, 1fr));
+  gap: 0;
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 640px;
+  margin: 0;
+  border-left: 1px solid var(--ink);
+  border-top: 1px solid var(--ink);
+  background: var(--bg);
+}
+
+.yearMediaGridCell {
+  box-sizing: border-box;
+  margin: 0;
+  border-right: 1px solid var(--ink);
+  border-bottom: 1px solid var(--ink);
+  aspect-ratio: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+}
+
+html[data-theme="brutalist"] .yearMediaGridCell {
+  background: var(--bg);
+}
+
+.yearMediaGridCellImg {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.yearEntryGrid {
+  display: grid;
+  gap: clamp(11px, 2vw, 16px);
+}
+
+.yearEntryGrid--links {
+  grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr));
+}
+
+.yearGridLinkCard {
+  padding: clamp(11px, 2vw, 14px);
+  border: 1px solid rgb(255 255 255 / 0.32);
+  background: rgb(255 255 255 / 0.07);
+}
+
+.yearGridLinkAnchor {
+  display: grid;
+  gap: 4px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.yearEntryGrid--quotes {
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr));
+}
+
+.yearGridQuoteCard {
+  margin: 0;
+  padding: clamp(14px, 2.2vw, 18px);
+  border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+  background: rgb(255 255 255 / 0.06);
+}
+
+.yearGridQuoteBody {
+  margin: 0;
+  font-family: var(--font-frame-display, var(--font-body));
+  font-size: 14px;
+  line-height: 1.42;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.yearGridQuoteSource {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--font-chrome, var(--font-body));
+  font-size: clamp(10px, 1.45vw, 11px);
+  font-style: normal;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.48;
+  color: var(--ink);
+}
+
+.yearOverviewEmpty {
+  margin: 0;
+  font-size: clamp(11px, 2vw, 13px);
+  line-height: 1.45;
+  color: var(--ink);
+  opacity: 0.7;
+}
+
+html[data-theme="minimal"] .yearOverviewWorkspaceMeta {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+html[data-theme="minimal"] .yearCategoryTabs {
+  border-bottom: 1px solid var(--minimal-rail-divider);
+}
+
+html[data-theme="minimal"] .yearCategoryTabsScroll {
+  gap: 2px;
+  padding: 10px 12px;
+}
+
+html[data-theme="minimal"] .yearCategoryTab {
+  min-height: 0;
+  border: 0;
+  border-radius: 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+  line-height: 1.25;
+  font-weight: 400;
+  padding: 8px 12px;
+}
+
+html[data-theme="minimal"] .yearCategoryTab:hover {
+  background: rgb(0 0 0 / 0.04);
+  color: var(--ink);
+}
+
+html[data-theme="minimal"] .yearCategoryTab[data-active="true"] {
+  background: rgb(0 0 0 / 0.06);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+html[data-theme="minimal"] .yearCategoryTabCount {
+  font-size: 12px;
+  letter-spacing: 0;
+  opacity: 0.45;
+}
+
+html[data-theme="minimal"] .yearCategoryTab:focus-visible {
+  outline: 2px solid rgb(0 113 227 / 0.45);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .yearOverview {
+    width: 100%;
+    max-width: none;
+    min-height: min(56dvh, 520px);
+    max-height: none;
+  }
+
+  .yearOverviewWorkspace {
+    min-height: min(56dvh, 520px);
+  }
+
+  .yearCategoryTab {
+    font-size: 11px;
+    line-height: 14px;
+    min-height: 36px;
+  }
+
+  html[data-theme="minimal"] .yearCategoryTab {
+    font-size: 13px;
+    line-height: 1.25;
+    min-height: 0;
+  }
+
+  html[data-theme="minimal"] .yearCategoryTabCount {
+    font-size: 12px;
+  }
+}
+
+.monthButton--year {
+  font-variant-numeric: tabular-nums;
 }
 
 .frame {
@@ -1428,6 +1799,15 @@ html[data-theme="paper"] .monthButton {
 
 html[data-theme="paper"] .monthButton {
   font-weight: 500;
+}
+
+html[data-theme="paper"] .yearCategoryTab {
+  font-weight: 500;
+  letter-spacing: 0.07em;
+}
+
+html[data-theme="paper"] .yearCategoryTabCount {
+  letter-spacing: 0.07em;
 }
 
 html[data-theme="paper"] .addButton {
