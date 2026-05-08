@@ -150,6 +150,14 @@ type CanvasImage = {
   addedAtMs?: number;
 };
 
+/** Full-AR hover card for year grid; `position: fixed` so scroll parents don’t clip it. */
+type YearMediaHoverPeek = {
+  src: string;
+  cx: number;
+  anchorPx: number;
+  placement: "above" | "below";
+};
+
 type FavoriteItemRow = {
   id: string;
   board_key: string;
@@ -602,6 +610,10 @@ export default function Home() {
   const [quoteDraft, setQuoteDraft] = useState({ text: "", source: "" });
   const [linkComposerOpen, setLinkComposerOpen] = useState(false);
   const [quoteComposerOpen, setQuoteComposerOpen] = useState(false);
+  /** Year overview: click opens dialog; hover uses fixed-layer peek (avoids workspace overflow clip). */
+  const [yearMediaPreview, setYearMediaPreview] = useState<CanvasImage | null>(null);
+  const [yearMediaPeek, setYearMediaPeek] = useState<YearMediaHoverPeek | null>(null);
+  const yearOverviewWorkspaceBodyRef = useRef<HTMLDivElement | null>(null);
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
@@ -700,6 +712,34 @@ export default function Home() {
     setSelectedImageId(null);
   }, []);
 
+  /** Fixed-position card so `.yearOverviewWorkspaceBody` scroll + `overflow` don’t clip the image. */
+  const showYearMediaPeekFromCell = useCallback((src: string, cellEl: HTMLElement) => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const r = cellEl.getBoundingClientRect();
+    const pad = 10;
+    const estMaxH = Math.min(window.innerHeight * 0.44, 440);
+    const gap = 18;
+    const spaceAbove = r.top - pad;
+    const spaceBelow = window.innerHeight - r.bottom - pad;
+    const reserve = estMaxH + gap;
+    const placement =
+      spaceAbove >= reserve
+        ? "above"
+        : spaceBelow >= reserve
+          ? "below"
+          : spaceAbove >= spaceBelow
+            ? "above"
+            : "below";
+    const anchorPx = placement === "above" ? r.top : r.bottom;
+    const panelHalfGuess = Math.min(window.innerWidth * 0.26, 190);
+    const cx = Math.min(
+      Math.max(r.left + r.width / 2, pad + panelHalfGuess),
+      window.innerWidth - pad - panelHalfGuess,
+    );
+    setYearMediaPeek({ src, cx, anchorPx, placement });
+  }, []);
+
   useEffect(() => {
     if (!accountMenuOpen) return;
     function onKey(event: KeyboardEvent) {
@@ -708,6 +748,47 @@ export default function Home() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [accountMenuOpen]);
+
+  useEffect(() => {
+    if (!isYearOverview) {
+      setYearMediaPreview(null);
+      setYearMediaPeek(null);
+    }
+  }, [isYearOverview]);
+
+  useEffect(() => {
+    if (yearMediaPreview) setYearMediaPeek(null);
+  }, [yearMediaPreview]);
+
+  useEffect(() => {
+    if (!yearMediaPeek) return;
+    const workspace = yearOverviewWorkspaceBodyRef.current;
+    function clearPeek() {
+      setYearMediaPeek(null);
+    }
+    workspace?.addEventListener("scroll", clearPeek, { passive: true });
+    window.addEventListener("scroll", clearPeek, { passive: true });
+    window.addEventListener("resize", clearPeek);
+    return () => {
+      workspace?.removeEventListener("scroll", clearPeek);
+      window.removeEventListener("scroll", clearPeek);
+      window.removeEventListener("resize", clearPeek);
+    };
+  }, [yearMediaPeek]);
+
+  useEffect(() => {
+    if (!yearMediaPreview) return;
+    function onKey(event: KeyboardEvent) {
+      if (event.key === "Escape") setYearMediaPreview(null);
+    }
+    window.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [yearMediaPreview]);
 
   useEffect(() => {
     if (!user) setAccountMenuOpen(false);
@@ -2150,6 +2231,8 @@ export default function Home() {
                       onClick={() => {
                         setActiveIndex(index);
                         setSelectedImageId(null);
+                        setYearMediaPreview(null);
+                        setYearMediaPeek(null);
                       }}
                     >
                       <span className="yearCategoryTabLabel">
@@ -2187,7 +2270,10 @@ export default function Home() {
                 </>
               ) : null}
             </header>
-            <div className="yearOverviewWorkspaceBody yearOverviewWorkspaceBody--mediaFlush">
+            <div
+              ref={yearOverviewWorkspaceBodyRef}
+              className="yearOverviewWorkspaceBody yearOverviewWorkspaceBody--mediaFlush"
+            >
               {!selectedYearBoard ? (
                 <p className="yearOverviewEmpty">{theme === "minimal" ? "No categories." : "NO CATEGORIES"}</p>
               ) : selectedYearBoard.variant === "canvas" ? (
@@ -2204,15 +2290,43 @@ export default function Home() {
                       <div
                         key={image?.id ?? `year-slot-${selectedYearBoard.cat.id}-${slotIndex}`}
                         className="yearMediaGridCell"
+                        onPointerEnter={(event) => {
+                          if (!image) return;
+                          showYearMediaPeekFromCell(
+                            image.src,
+                            event.currentTarget as HTMLElement,
+                          );
+                        }}
+                        onPointerLeave={() => setYearMediaPeek(null)}
                       >
                         {image ? (
-                          <img
-                            className="yearMediaGridCellImg"
-                            src={image.src}
-                            alt=""
-                            loading="lazy"
-                            draggable={false}
-                          />
+                          <button
+                            type="button"
+                            className="yearMediaGridCellButton"
+                            aria-label={
+                              theme === "minimal" ? "View image larger" : "VIEW IMAGE LARGER"
+                            }
+                            onClick={() => {
+                              setYearMediaPeek(null);
+                              setYearMediaPreview(image);
+                            }}
+                            onFocus={(event) => {
+                              const cell = (event.currentTarget as HTMLElement).closest(
+                                ".yearMediaGridCell",
+                              );
+                              if (cell instanceof HTMLElement)
+                                showYearMediaPeekFromCell(image.src, cell);
+                            }}
+                            onBlur={() => setYearMediaPeek(null)}
+                          >
+                            <img
+                              className="yearMediaGridCellImg"
+                              src={image.src}
+                              alt=""
+                              loading="lazy"
+                              draggable={false}
+                            />
+                          </button>
                         ) : null}
                       </div>
                     ))}
@@ -2268,6 +2382,61 @@ export default function Home() {
               )}
             </div>
           </div>
+          {yearMediaPeek ? (
+            <div
+              className={`yearMediaPeekFloating yearMediaPeekFloating--${yearMediaPeek.placement}`}
+              style={
+                {
+                  "--peek-cx": `${yearMediaPeek.cx}px`,
+                  "--peek-anchor": `${yearMediaPeek.anchorPx}px`,
+                } as CSSProperties
+              }
+              aria-hidden
+            >
+              <img
+                className="yearMediaPeekFloatingImg"
+                src={yearMediaPeek.src}
+                alt=""
+                draggable={false}
+              />
+            </div>
+          ) : null}
+          {yearMediaPreview ? (
+            <>
+              <button
+                type="button"
+                className="yearMediaLightboxBackdrop"
+                aria-label={theme === "minimal" ? "Close image preview" : "CLOSE IMAGE PREVIEW"}
+                onClick={() => setYearMediaPreview(null)}
+              />
+              <div
+                className="yearMediaLightbox"
+                role="dialog"
+                aria-modal="true"
+                aria-label={
+                  theme === "minimal"
+                    ? `${calendarOverviewYear} image`
+                    : `${calendarOverviewYear} IMAGE`
+                }
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <button
+                  type="button"
+                  className="yearMediaLightboxClose"
+                  aria-label={theme === "minimal" ? "Close" : "CLOSE"}
+                  onClick={() => setYearMediaPreview(null)}
+                >
+                  {theme === "minimal" ? "Close" : "CLOSE"}
+                </button>
+                <img
+                  className="yearMediaLightboxImg"
+                  src={yearMediaPreview.src}
+                  alt=""
+                  draggable={false}
+                />
+              </div>
+            </>
+          ) : null}
         </section>
       ) : activeMonth ? (
       <section
