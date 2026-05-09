@@ -306,8 +306,25 @@ const YEAR_OVERVIEW_SLOT_INDEX = months.length;
 const YEAR_MEDIA_GRID_COLUMNS = 10;
 const YEAR_MEDIA_GRID_MIN_ROWS = 6;
 
-/** Expands computed `grid-template-columns` token list (handles `repeat` + mixed units). */
+/**
+ * Matches the **placed** grid: some engines report `repeat()` as a single token; counting
+ * first-row siblings by geometry matches shrink-wrapped tracks (mobile `auto-fill`, etc.).
+ */
 function readYearMediaGridColumnCount(grid: HTMLElement): number {
+  const children = [...grid.children].filter((n): n is HTMLElement => n instanceof HTMLElement);
+  if (children.length === 0) return YEAR_MEDIA_GRID_COLUMNS;
+
+  const topRef = children[0].getBoundingClientRect().top;
+  const rowTolerancePx = 2;
+
+  let byRow = 0;
+  for (const cell of children) {
+    const t = cell.getBoundingClientRect().top;
+    if (byRow > 0 && Math.abs(t - topRef) > rowTolerancePx) break;
+    byRow++;
+  }
+  if (byRow > 0) return byRow;
+
   const tpl = getComputedStyle(grid).gridTemplateColumns.trim();
   if (!tpl || tpl === "none") return YEAR_MEDIA_GRID_COLUMNS;
   const parts = tpl.split(/\s+/).filter(Boolean);
@@ -3081,11 +3098,16 @@ export default function Home() {
                     {yearMediaGridSlots.map((image, slotIndex) => {
                       const slotCount = yearMediaGridSlots.length;
                       const cols = Math.min(
-                        slotCount > 0 ? slotCount : 1,
                         Math.max(1, yearMediaLayoutCols),
+                        Math.max(1, slotCount),
                       );
+                      /** Width of incomplete last row (always `cols` when `slotCount % cols === 0`). */
+                      const slotsInLastRow =
+                        slotCount > 0 ? ((slotCount - 1) % cols) + 1 : cols;
+                      const lastRowFirst = slotCount - slotsInLastRow;
                       const isEdgeRight = slotIndex % cols === cols - 1;
-                      const isEdgeBottom = slotIndex >= slotCount - cols;
+                      const isEdgeBottom =
+                        slotCount > 0 && slotIndex >= lastRowFirst && slotIndex < slotCount;
                       return (
                         <div
                           key={image?.id ?? `year-slot-${selectedYearBoard.cat.id}-${slotIndex}`}
