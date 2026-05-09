@@ -2892,6 +2892,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   .mobileAppChrome__topBand {
     box-sizing: border-box;
     position: relative;
+    z-index: 2;
     flex: 0 0 auto;
     height: var(--top-frame-height);
     display: flex;
@@ -2906,7 +2907,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     position: relative;
     top: auto;
     left: auto;
-    z-index: 1;
+    z-index: 4;
     height: var(--top-frame-height);
     flex-shrink: 0;
   }
