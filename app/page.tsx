@@ -2896,11 +2896,6 @@ export default function Home() {
               ) : null}
             </div>
           </div>
-          {ALLOW_LOCAL_EDIT_WITHOUT_AUTH && !user ? (
-            <span className="localEditHint" role="status">
-              {theme === "minimal" ? "Local · not synced" : "LOCAL · NOT SYNCED"}
-            </span>
-          ) : null}
           {supabase && !user && !editMode ? (
             <button
               type="button"
@@ -3400,8 +3395,9 @@ export default function Home() {
           const boardImages = imagesByBoard[imageKey] ?? [];
           const boardLinks = linksByBoard[imageKey] ?? [];
           const boardQuotesList = quotesByBoard[imageKey] ?? [];
-          const isBooksCarousel =
-            variant === "canvas" && item.id === OPEN_LIBRARY_BOOKS_CATEGORY_ID;
+          const isCoverCarousel =
+            variant === "canvas" &&
+            (item.id === OPEN_LIBRARY_BOOKS_CATEGORY_ID || item.id === TMDB_MEDIA_CATEGORY_ID);
           const bookCarouselIndex = wrapIndex(
             bookCarouselIndexByBoard[imageKey] ?? 0,
             boardImages.length,
@@ -4058,7 +4054,7 @@ export default function Home() {
                           if (canEdit) event.preventDefault();
                         }}
                       >
-                        {isBooksCarousel ? (
+                        {isCoverCarousel ? (
                           boardImages.length > 0 ? (
                             <div
                               className="bookCarousel"

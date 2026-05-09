@@ -739,7 +739,7 @@ html[data-theme="minimal"] .authEnterEditButton {
   */
   .frame {
     box-sizing: border-box;
-    --frame-spine: clamp(50px, 9.5vw, 78px);
+    --frame-spine: clamp(42px, 8.4vw, 68px);
     padding-top: var(--frame-spine);
     overflow: visible;
   }
@@ -1881,7 +1881,8 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
     translateZ(calc((3 - var(--book-offset-abs)) * 18px))
     rotateY(calc(var(--book-offset) * -18deg))
     scale(calc(1 - (var(--book-offset-abs) * 0.06)));
-  opacity: calc(1 - (var(--book-offset-abs) * 0.17));
+  /* Side covers read as “behind” the center; center stays full strength. */
+  opacity: 0.5;
   z-index: calc(40 - var(--book-offset-abs));
   filter: saturate(calc(1 - (var(--book-offset-abs) * 0.14)));
   cursor: pointer;
@@ -1907,22 +1908,27 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
 
 .bookCarouselCard[data-active="true"] {
   z-index: 48;
+  opacity: 1;
 }
 
 .bookCarouselControls {
   position: absolute;
   left: 50%;
-  top: calc(100% + 10px);
+  top: 8px;
+  bottom: auto;
   transform: translateX(-50%);
+  z-index: 2;
   display: flex;
   gap: 4px;
 }
 
 .bookCarouselNav {
   position: absolute;
-  left: 50%;
-  bottom: 8px;
-  transform: translateX(-50%);
+  left: 8px;
+  top: 8px;
+  right: auto;
+  bottom: auto;
+  transform: none;
   z-index: 60;
   display: inline-flex;
   align-items: center;
@@ -3194,6 +3200,8 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     border-right: none;
     border-bottom: var(--frame-border-width) solid var(--ink);
     -webkit-overflow-scrolling: touch;
+    touch-action: pan-x;
+    overscroll-behavior-x: contain;
     padding-inline: max(0px, env(safe-area-inset-left)) max(0px, env(safe-area-inset-right));
     padding-block: 0;
   }
@@ -3222,7 +3230,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     align-items: center;
     justify-content: center;
     gap: 8px;
-    touch-action: manipulation;
+    touch-action: pan-x;
   }
 
   .monthButton[data-current="true"] {
@@ -3351,7 +3359,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
    fixed label band instead.
    */
   .frame:not([data-active="true"]) .frameRect {
-    top: calc(8px + clamp(18px, 5vw, 24px));
+    top: calc(6px + clamp(14px, 4.2vw, 20px));
     right: 0;
     bottom: 0;
     left: 0;
@@ -3360,7 +3368,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   .frame[data-active="true"] .frameRect {
-    top: calc(8px + clamp(20px, 5.5vw, 28px));
+    top: calc(6px + clamp(16px, 4.6vw, 22px));
     right: 0;
     bottom: 0;
     left: 0;
