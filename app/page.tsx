@@ -28,6 +28,7 @@ function isEmailSendRateLimited(
   );
 }
 import FavoritesAiAgent from "./components/FavoritesAiAgent";
+import MobileFrameGrain from "./components/MobileFrameGrain";
 import { normalizeImageFileForStorage } from "./lib/normalizeUploadImage";
 import { BOARD_TEXT_TABLE, FAVORITES_BUCKET, FAVORITES_TABLE, supabase } from "./lib/supabase";
 
@@ -3513,6 +3514,11 @@ export default function Home() {
                 ) : null}
               </div>
               <span className="frameRect">
+                {!wideLayout ? (
+                  <span className="frameRect__grain" aria-hidden>
+                    <MobileFrameGrain theme={theme} categoryId={item.id} />
+                  </span>
+                ) : null}
                 <span className="frameContent" aria-hidden={!isActive}>
                   <span className="canvasHeader" onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}>
                     <span

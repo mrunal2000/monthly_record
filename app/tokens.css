@@ -4,10 +4,10 @@
  */
 
 :root {
-  /* Collapsed row (mobile): label band + 8px gap + colored strip (min). */
-  --accordion-mobile-collapsed-chrome-h: clamp(36px, 10vw, 44px);
+  /* Collapsed row (mobile): mast (matches .frameTopChrome min-height) + 4px gap + strip. */
+  --accordion-mobile-collapsed-chrome-h: 36px;
   --accordion-mobile-collapsed-label-gap: 4px;
-  --accordion-mobile-collapsed-strip-min: 12px;
+  --accordion-mobile-collapsed-strip-min: 18px;
   --accordion-mobile-collapsed-height: calc(
     var(--accordion-mobile-collapsed-chrome-h) + var(--accordion-mobile-collapsed-label-gap) +
       var(--accordion-mobile-collapsed-strip-min)

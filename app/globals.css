@@ -3315,6 +3315,13 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     flex: 0 0 auto;
     flex-shrink: 0;
     isolation: isolate;
+    /*
+     Paper B8-0: column `align-items: start`, `padding-inline: 0` on the frame — mast and body share one
+     left edge. Collapsed: safe-area only; expanded: same horizontal inset as `.frameContent`.
+    */
+    --frame-mobile-pad-y: clamp(18px, 3.5vw, 32px);
+    --frame-mobile-pad-x: max(0px, env(safe-area-inset-left, 0px));
+    --frame-mobile-pad-x-end: max(0px, env(safe-area-inset-right, 0px));
     /* Match `--mobile-scroll-fence-*` semantics: inset native scroll anchors below fixed chrome. */
     scroll-margin-block-start: calc(
       env(safe-area-inset-top, 0px) + var(--mobile-chrome-under-safe-area) +
@@ -3339,6 +3346,8 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     flex-basis: auto;
     min-height: var(--accordion-mobile-slot-height);
     max-height: none;
+    --frame-mobile-pad-x: max(var(--frame-mobile-pad-y), env(safe-area-inset-left, 0px));
+    --frame-mobile-pad-x-end: max(var(--frame-mobile-pad-y), env(safe-area-inset-right, 0px));
   }
 
   /*
@@ -3360,7 +3369,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   /*
-   Collapsed rows use --accordion-mobile-collapsed-height (mast + 8px gap + strip).
+   Collapsed rows use --accordion-mobile-collapsed-height (mast + gap + strip).
    Position the colored rect below the mast so the gap stays visible.
    */
   .frame:not([data-active="true"]) .frameRect {
@@ -3371,7 +3380,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     bottom: 0;
     left: 0;
     height: auto;
-    min-height: 12px;
+    min-height: var(--accordion-mobile-collapsed-strip-min);
   }
 
   .frame[data-active="true"] .frameRect {
@@ -3381,6 +3390,21 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     left: 0;
     height: auto;
     min-height: 0;
+  }
+
+  /* WebGL grain (Paper AZ-0) mounts inside `.frameRect__grain` on mobile only; keep CSS var as fallback under canvas. */
+  .frameRect__grain {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .frameRect__grain > div {
+    width: 100%;
+    height: 100%;
+    min-height: var(--accordion-mobile-collapsed-strip-min);
   }
 
   .frameTopChrome {
@@ -3394,16 +3418,16 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     gap: 8px;
     box-sizing: border-box;
     min-height: 36px;
-    padding: 6px 10px 8px;
-    padding-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
+    padding: 6px 0 8px;
+    padding-inline: var(--frame-mobile-pad-x) var(--frame-mobile-pad-x-end);
     pointer-events: none;
   }
 
   .frame[data-active="true"] .frameTopChrome {
     gap: 12px;
     min-height: 44px;
-    padding: 10px 14px 12px;
-    padding-inline: max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-right));
+    padding: 10px 0 12px;
+    padding-inline: var(--frame-mobile-pad-x) var(--frame-mobile-pad-x-end);
   }
 
   .frameTopChrome .frameLabel {
@@ -3496,8 +3520,15 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   .frame[data-active="true"] .frameContent {
-    inset: clamp(18px, 3.5vw, 32px);
+    top: var(--frame-mobile-pad-y);
+    right: var(--frame-mobile-pad-x-end);
+    bottom: var(--frame-mobile-pad-y);
+    left: var(--frame-mobile-pad-x);
     gap: clamp(12px, 2.2vw, 20px);
+  }
+
+  html[data-theme="paper"] .frame[data-active="true"] .frameContent {
+    top: calc(var(--frame-mobile-pad-y) + var(--paper-spine-cap-height));
   }
 
   .frameTitle {
