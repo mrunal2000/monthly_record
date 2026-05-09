@@ -4,8 +4,14 @@
  */
 
 :root {
-  /* Collapsed stripe height when the accordion stacks vertically (mobile) */
-  --accordion-mobile-collapsed-height: clamp(42px, 11vw, 54px);
+  /* Collapsed row (mobile): label band + 8px gap + colored strip (min). */
+  --accordion-mobile-collapsed-chrome-h: clamp(36px, 10vw, 44px);
+  --accordion-mobile-collapsed-label-gap: 4px;
+  --accordion-mobile-collapsed-strip-min: 12px;
+  --accordion-mobile-collapsed-height: calc(
+    var(--accordion-mobile-collapsed-chrome-h) + var(--accordion-mobile-collapsed-label-gap) +
+      var(--accordion-mobile-collapsed-strip-min)
+  );
   --mobile-month-rail-band: 48px;
   /* Space below fixed theme/date + months chrome before scrolling content begins */
   --mobile-content-below-chrome-gap: clamp(12px, 3.5vw, 16px);

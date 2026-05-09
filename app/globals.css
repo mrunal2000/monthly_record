@@ -1367,6 +1367,12 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   outline-offset: 4px;
 }
 
+@media (min-width: 768px) {
+  .frameTopChrome {
+    display: contents;
+  }
+}
+
 .frameRect {
   position: absolute;
   right: 0;
@@ -3354,12 +3360,13 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   /*
-   Collapsed rows are only ~--accordion-mobile-collapsed-height tall; a %-height reserve modeled on the
-   open panel left almost no colored rect (e.g. 4px). Pin the strip with top +
-   fixed label band instead.
+   Collapsed rows use --accordion-mobile-collapsed-height (mast + 8px gap + strip).
+   Position the colored rect below the mast so the gap stays visible.
    */
   .frame:not([data-active="true"]) .frameRect {
-    top: calc(6px + clamp(14px, 4.2vw, 20px));
+    top: calc(
+      var(--accordion-mobile-collapsed-chrome-h) + var(--accordion-mobile-collapsed-label-gap)
+    );
     right: 0;
     bottom: 0;
     left: 0;
@@ -3368,7 +3375,7 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
   }
 
   .frame[data-active="true"] .frameRect {
-    top: calc(6px + clamp(16px, 4.6vw, 22px));
+    top: calc(12px + clamp(46px, 12vw, 58px));
     right: 0;
     bottom: 0;
     left: 0;
@@ -3376,17 +3383,88 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     min-height: 0;
   }
 
-  .frameLabel {
-    left: 10px;
-    top: 6px;
+  .frameTopChrome {
+    position: absolute;
+    inset-inline: 0;
+    top: 0;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    box-sizing: border-box;
+    min-height: 36px;
+    padding: 6px 10px 8px;
+    padding-inline: max(10px, env(safe-area-inset-left)) max(10px, env(safe-area-inset-right));
+    pointer-events: none;
+  }
+
+  .frame[data-active="true"] .frameTopChrome {
+    gap: 12px;
+    min-height: 44px;
+    padding: 10px 14px 12px;
+    padding-inline: max(14px, env(safe-area-inset-left)) max(14px, env(safe-area-inset-right));
+  }
+
+  .frameTopChrome .frameLabel {
+    position: static;
+    left: auto;
     bottom: auto;
+    top: auto;
     transform: none;
     transform-origin: unset;
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: none;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: calc(100% - 16px);
     pointer-events: none;
+  }
+
+  .frameCollapseTrigger {
+    position: relative;
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 36px;
+    height: 36px;
+    margin: 0;
+    padding: 0;
+    border: var(--frame-border-width) solid var(--ink);
+    border-radius: 0;
+    background: var(--bg);
+    color: var(--ink);
+    cursor: pointer;
+    display: grid;
+    place-items: center;
+    pointer-events: auto;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .frameCollapseTrigger svg {
+    display: block;
+  }
+
+  .frameCollapseTrigger:hover {
+    background: var(--ink);
+    color: var(--bg);
+  }
+
+  .frameCollapseTrigger:focus-visible {
+    outline: 2px solid var(--ink);
+    outline-offset: 2px;
+  }
+
+  html[data-theme="minimal"] .frameCollapseTrigger {
+    border-radius: 8px;
+    border-color: var(--minimal-frame-border);
+    background: var(--minimal-frame-fill);
+  }
+
+  html[data-theme="minimal"] .frameCollapseTrigger:hover {
+    background: rgb(0 0 0 / 0.06);
+    color: var(--ink);
   }
 
   .frame[data-active="true"][data-direction="ltr"] .frameRect {
@@ -3415,6 +3493,11 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
     to {
       clip-path: inset(0 0 0 0);
     }
+  }
+
+  .frame[data-active="true"] .frameContent {
+    inset: clamp(18px, 3.5vw, 32px);
+    gap: clamp(12px, 2.2vw, 20px);
   }
 
   .frameTitle {

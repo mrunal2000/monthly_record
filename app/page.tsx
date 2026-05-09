@@ -1158,18 +1158,16 @@ export default function Home() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  function collapseMobileAccordion() {
+    if (wideLayout) return;
+    setActiveIndex(-1);
+    setSelectedImageId(null);
+    setTmdbPickerCategoryId(null);
+    setOpenLibraryPickerCategoryId(null);
+    setNominatimPickerCategoryId(null);
+  }
+
   function openFrame(index: number, options?: { preserveTmdbPicker?: boolean }) {
-    /** Mobile: tap the open row again to collapse everything (no frame forced open). */
-    if (!wideLayout && index === activeIndexRef.current && index >= 0) {
-      setActiveIndex(-1);
-      setSelectedImageId(null);
-      if (!options?.preserveTmdbPicker) {
-        setTmdbPickerCategoryId(null);
-        setOpenLibraryPickerCategoryId(null);
-        setNominatimPickerCategoryId(null);
-      }
-      return;
-    }
     if (index === activeIndexRef.current) {
       return;
     }
@@ -3456,7 +3454,10 @@ export default function Home() {
               role="button"
               tabIndex={0}
               aria-selected={isActive}
-              onClick={() => openFrame(index)}
+              onClick={() => {
+                if (!wideLayout && index === activeIndex) return;
+                openFrame(index);
+              }}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" && event.key !== " ") return;
                 const el = event.target;
@@ -3469,14 +3470,48 @@ export default function Home() {
                 }
                 if (el instanceof HTMLElement && el.isContentEditable) return;
                 event.preventDefault();
+                if (!wideLayout && index === activeIndex) return;
                 openFrame(index);
               }}
             >
-              <span className="frameLabel">
-                {`${
-                  theme === "minimal" ? formatMinimalSentenceCase(item.label) : item.label
-                }[${boardItemCount}]`}
-              </span>
+              <div className="frameTopChrome">
+                <span className="frameLabel">
+                  {`${
+                    theme === "minimal" ? formatMinimalSentenceCase(item.label) : item.label
+                  }[${boardItemCount}]`}
+                </span>
+                {!wideLayout && isActive ? (
+                  <button
+                    type="button"
+                    className="frameCollapseTrigger"
+                    aria-label={
+                      theme === "minimal" ? "Collapse this section" : "COLLAPSE THIS SECTION"
+                    }
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      collapseMobileAccordion();
+                    }}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 16 16"
+                      fill="none"
+                      xmlns="http://www.w3.org/2000/svg"
+                      aria-hidden
+                    >
+                      <path
+                        d="M4 10l4-4 4 4"
+                        stroke="currentColor"
+                        strokeWidth="1.75"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </button>
+                ) : null}
+              </div>
               <span className="frameRect">
                 <span className="frameContent" aria-hidden={!isActive}>
                   <span className="canvasHeader" onPointerDown={(event) => canEdit && isActive && event.stopPropagation()}>
