@@ -1113,25 +1113,45 @@ export default function Home() {
       mobileChromeElRef.current ?? document.querySelector<HTMLElement>("header.mobileAppChrome");
     if (!pageEl || !chromeEl) return;
 
+    const gapPx = 14;
+    /** Re-run after accordion height / clip-path settles (see `--motion-panel-duration` in CSS). */
+    const postAnimationMs = 650;
+
     let cancelled = false;
+    const fenceScroll = (behavior: ScrollBehavior) => {
+      const chromeBottom = chromeEl.getBoundingClientRect().bottom;
+      const frameTop = el.getBoundingClientRect().top;
+      const delta = frameTop - chromeBottom - gapPx;
+      if (Math.abs(delta) < 2) return;
+      pageEl.scrollTo({
+        top: Math.max(0, pageEl.scrollTop + delta),
+        behavior,
+      });
+    };
+
     const id = window.requestAnimationFrame(() => {
       window.requestAnimationFrame(() => {
         if (cancelled) return;
-        /** Match visual gap under fixed month rail (see `--mobile-content-below-chrome-gap`). */
-        const gapPx = 14;
         const chromeBottom = chromeEl.getBoundingClientRect().bottom;
         const frameTop = el.getBoundingClientRect().top;
-        const delta = frameTop - chromeBottom - gapPx;
-        if (Math.abs(delta) < 2) return;
-        pageEl.scrollTo({
-          top: Math.max(0, pageEl.scrollTop + delta),
-          behavior: "smooth",
-        });
+        const rough = Math.abs(frameTop - chromeBottom - gapPx);
+        fenceScroll(rough > 72 ? "auto" : "smooth");
       });
     });
+
+    const tMid = window.setTimeout(() => {
+      if (!cancelled) fenceScroll("auto");
+    }, 120);
+
+    const tLate = window.setTimeout(() => {
+      if (!cancelled) fenceScroll("auto");
+    }, postAnimationMs);
+
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(id);
+      window.clearTimeout(tMid);
+      window.clearTimeout(tLate);
     };
   }, [activeIndex, wideLayout, isYearOverview, activeMonth?.id]);
 
@@ -3946,11 +3966,7 @@ export default function Home() {
                                 autoComplete="off"
                                 spellCheck={false}
                                 enterKeyHint="search"
-                                placeholder={
-                                  theme === "minimal"
-                                    ? "Place or restaurant name…"
-                                    : "PLACE OR RESTAURANT NAME"
-                                }
+                                placeholder="Place or restaurant name…"
                                 value={nominatimQuery}
                                 onChange={(event) => setNominatimQuery(event.target.value)}
                                 aria-busy={nominatimSearchBusy}
@@ -3969,11 +3985,6 @@ export default function Home() {
                               ) : null}
                             </div>
                           </form>
-                          <p className="nominatimPolicyHint" role="note">
-                            {theme === "minimal"
-                              ? "Search runs when you tap Search (not on every keystroke), per OpenStreetMap’s Nominatim policy."
-                              : "SEARCH RUNS ON BUTTON ONLY — NOMINATIM USAGE POLICY."}
-                          </p>
                           {nominatimMessage ? (
                             <p className="tmdbSearchMessage" role="status">
                               {nominatimMessage}
@@ -4036,25 +4047,6 @@ export default function Home() {
                               ))}
                             </ul>
                           ) : null}
-                          <p className="tmdbAttribution">
-                            Results from{" "}
-                            <a
-                              href="https://nominatim.org/release-docs/latest/api/Search/"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              Nominatim
-                            </a>{" "}
-                            /{" "}
-                            <a
-                              href="https://www.openstreetmap.org/copyright"
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              OpenStreetMap
-                            </a>
-                            .
-                          </p>
                         </div>
                       ) : null}
                       {canEdit &&
