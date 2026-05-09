@@ -3514,7 +3514,7 @@ export default function Home() {
                 ) : null}
               </div>
               <span className="frameRect">
-                {!wideLayout ? (
+                {!wideLayout && !isActive ? (
                   <span className="frameRect__grain" aria-hidden>
                     <MobileFrameGrain theme={theme} categoryId={item.id} />
                   </span>
