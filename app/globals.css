@@ -355,13 +355,13 @@ body {
   z-index: 4;
   transform: translateY(-50%);
   margin: 0;
-  padding: 0 10px;
-  min-height: 26px;
+  padding: 0 7px;
+  min-height: 22px;
   border: 1px solid var(--ink);
   background: var(--bg);
   color: var(--ink);
   font: inherit;
-  font-size: 10px;
+  font-size: 9px;
   line-height: 1;
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -375,11 +375,40 @@ body {
 
 html[data-theme="minimal"] .authEnterEditButton {
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   letter-spacing: 0;
   text-transform: none;
   border-radius: 6px;
+}
+
+/*
+  Desktop: `.mobileAppChrome` / `__topBand` use `display: contents`, so this control is not inside a
+  real top-bar box—`top: 50%` was resolving against `main.page` and landed mid-screen. Pin to header band.
+*/
+@media (min-width: 768px) {
+  .authEnterEditButton {
+    --auth-enter-edit-h: 22px;
+    top: 0;
+    transform: none;
+    height: var(--auth-enter-edit-h);
+    min-height: var(--auth-enter-edit-h);
+    margin-top: max(0px, calc((var(--top-frame-height) - var(--auth-enter-edit-h)) / 2));
+    padding: 0 6px;
+    display: inline-flex;
+    align-items: center;
+    align-self: start;
+    font-size: 9px;
+  }
+
+  /* After theme + “LOCAL · NOT SYNCED” strip (see `.localEditHint`). */
+  .page.page--localEditWithoutAuth .authEnterEditButton {
+    left: clamp(268px, 28vw, 400px);
+  }
+
+  .page:not(.page--localEditWithoutAuth) .authEnterEditButton {
+    left: clamp(120px, 13vw, 188px);
+  }
 }
 
 .localEditHint {
@@ -2488,6 +2517,15 @@ html[data-theme="paper"] .frame[data-active="true"] .imageShader {
       env(safe-area-inset-top, 0px) + var(--mobile-chrome-under-safe-area) +
         var(--mobile-content-below-chrome-gap)
     );
+    /*
+      Fixed `.mobileAppChrome` sits over the scrollport; top padding scrolls away, so
+      `scrollIntoView({ block: "start" })` (e.g. after a month change) must inset the target
+      region by the same band as the fixed header + breathing room.
+    */
+    scroll-padding-block-start: calc(
+      env(safe-area-inset-top, 0px) + var(--mobile-chrome-under-safe-area) +
+        var(--mobile-content-below-chrome-gap)
+    );
     padding-right: max(12px, env(safe-area-inset-right));
     padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 16px);
     padding-left: max(12px, env(safe-area-inset-left));
@@ -3469,5 +3507,20 @@ html[data-theme="minimal"] .aiChatMarkdown__img {
 
   .accordion {
     animation: none;
+  }
+}
+
+/*
+  iOS Safari zooms the page when focusing many text-ish controls below 16px.
+  Omit `.themeSelect` — it would blow up header chrome for little zoom benefit vs native picker.
+*/
+@media (max-width: 767px) {
+  .frameNoteEditable,
+  .linkComposerInput,
+  .quoteComposerTextarea,
+  .quoteComposerSource,
+  .tmdbSearchInput,
+  .aiAgentPanel__input {
+    font-size: 16px !important;
   }
 }

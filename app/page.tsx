@@ -841,8 +841,11 @@ export default function Home() {
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
   const frameArticleRefs = useRef<(HTMLElement | null)[]>([]);
-  /** Skip first mobile `scrollIntoView` so refresh keeps content below fixed chrome (padding-top). */
+  /** Skip first mobile scroll-into-band so refresh keeps content below fixed chrome (padding-top). */
   const skipMobileFrameScrollIntoViewRef = useRef(true);
+  /** `scroll-padding` / `scrollIntoView` are unreliable on iOS; we scroll `main` using measured chrome height. */
+  const pageMainElRef = useRef<HTMLElement | null>(null);
+  const mobileChromeElRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const lastDragAppliedRef = useRef<{
     imageKey: string;
@@ -1075,10 +1078,31 @@ export default function Home() {
       skipMobileFrameScrollIntoViewRef.current = false;
       return;
     }
+    const pageEl = pageMainElRef.current;
+    const chromeEl =
+      mobileChromeElRef.current ?? document.querySelector<HTMLElement>("header.mobileAppChrome");
+    if (!pageEl || !chromeEl) return;
+
+    let cancelled = false;
     const id = window.requestAnimationFrame(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.requestAnimationFrame(() => {
+        if (cancelled) return;
+        /** Match visual gap under fixed month rail (see `--mobile-content-below-chrome-gap`). */
+        const gapPx = 14;
+        const chromeBottom = chromeEl.getBoundingClientRect().bottom;
+        const frameTop = el.getBoundingClientRect().top;
+        const delta = frameTop - chromeBottom - gapPx;
+        if (Math.abs(delta) < 2) return;
+        pageEl.scrollTo({
+          top: Math.max(0, pageEl.scrollTop + delta),
+          behavior: "smooth",
+        });
+      });
     });
-    return () => window.cancelAnimationFrame(id);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(id);
+    };
   }, [activeIndex, wideLayout, isYearOverview, activeMonth?.id]);
 
   useEffect(() => {
@@ -2584,6 +2608,7 @@ export default function Home() {
 
   return (
     <main
+      ref={pageMainElRef}
       className={[
         "page",
         user && "page--signedIn",
@@ -2595,15 +2620,17 @@ export default function Home() {
         .join(" ")}
       onPointerDown={clearCanvasSelection}
     >
-      <FavoritesAiAgent
-        months={months}
-        categories={categories}
-        imagesByBoard={imagesByBoard}
-        linksByBoard={linksByBoard}
-        quotesByBoard={quotesByBoard}
-        theme={theme}
-      />
-      <header className="mobileAppChrome">
+      {user ? (
+        <FavoritesAiAgent
+          months={months}
+          categories={categories}
+          imagesByBoard={imagesByBoard}
+          linksByBoard={linksByBoard}
+          quotesByBoard={quotesByBoard}
+          theme={theme}
+        />
+      ) : null}
+      <header className="mobileAppChrome" ref={mobileChromeElRef}>
         <div className="mobileAppChrome__topBand">
           <label className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
             <span className="themePickerPrefix">Theme:</span>
