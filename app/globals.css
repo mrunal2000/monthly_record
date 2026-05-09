@@ -346,6 +346,111 @@ body {
   cursor: pointer;
 }
 
+button.themeSelect {
+  margin: 0;
+  padding: 0 4px 0 6px;
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 3px;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.themeSelectLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.themeSelectCaret {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  opacity: 0.65;
+}
+
+.themeSelectCaret svg {
+  display: block;
+}
+
+.themePickerSlot {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.themeMenuBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+.themeMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 101;
+  box-sizing: border-box;
+  min-width: max(100%, 108px);
+  margin: 0;
+  padding: 4px 0;
+  border: var(--frame-border-width) solid var(--ink);
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow:
+    0 12px 40px rgb(0 0 0 / 0.12),
+    0 2px 8px rgb(0 0 0 / 0.06);
+}
+
+.themeMenuOption {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 10px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.themeMenuOption:hover {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.themeMenuOptionMark {
+  flex: 0 0 12px;
+  width: 12px;
+  text-align: center;
+  font-size: 9px;
+  line-height: 1;
+}
+
+.themeMenuOptionLabel {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
 /* Entry to sign-in flow when the URL has no `?edit=1` (e.g. home-screen bookmark). */
 .authEnterEditButton {
   box-sizing: border-box;
@@ -871,8 +976,7 @@ html[data-theme="minimal"] .yearOverviewWorkspaceHeader--dense .yearOverviewWork
   width: 100%;
   min-width: 640px;
   margin: 0;
-  border-left: 1px solid var(--ink);
-  border-top: 1px solid var(--ink);
+  /* Outer frame lines come from `.yearOverview`; avoid doubling with cell/grid borders at edges. */
   background: var(--bg);
 }
 
@@ -902,6 +1006,14 @@ html[data-theme="minimal"] .yearOverviewWorkspaceHeader--dense .yearOverviewWork
 
 html[data-theme="brutalist"] .yearMediaGridCell {
   background: var(--bg);
+}
+
+.yearMediaGridCell--edgeRight {
+  border-right: none;
+}
+
+.yearMediaGridCell--edgeBottom {
+  border-bottom: none;
 }
 
 .yearMediaGridCellButton {
@@ -1216,6 +1328,17 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
 
   html[data-theme="minimal"] .yearCategoryTabCount {
     font-size: 12px;
+  }
+
+  /* Year media matrix: fit the viewport width; scroll vertically only (no sideways pan). */
+  .yearOverviewWorkspaceBody--mediaFlush {
+    overflow-x: hidden;
+  }
+
+  .yearMediaGrid {
+    min-width: 0;
+    width: 100%;
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   }
 }
 
@@ -2224,7 +2347,7 @@ html[data-theme="minimal"] .themeSelect {
   -webkit-appearance: none;
   min-height: 0;
   height: 22px;
-  padding: 0 20px 0 8px;
+  padding: 0 6px 0 8px;
   border-radius: 4px;
   border: 1px solid var(--minimal-frame-border);
   background-color: var(--minimal-frame-fill);
@@ -2237,10 +2360,12 @@ html[data-theme="minimal"] .themeSelect {
   text-transform: none;
   cursor: pointer;
   box-shadow: 0 1px 1px rgb(15 23 42 / 0.04);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 16 16' fill='none' stroke='%2386868b' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 6l4 4 4-4'/%3E%3C/svg%3E");
-  background-repeat: no-repeat;
-  background-position: right 6px center;
-  background-size: 12px 12px;
+  gap: 5px;
+}
+
+html[data-theme="minimal"] .themeSelectCaret {
+  opacity: 0.55;
+  color: rgb(113 113 122);
 }
 
 html[data-theme="minimal"] .themeSelect:hover {
@@ -2250,6 +2375,27 @@ html[data-theme="minimal"] .themeSelect:hover {
 html[data-theme="minimal"] .themeSelect:focus-visible {
   outline: 2px solid rgb(0 113 227 / 0.4);
   outline-offset: 2px;
+}
+
+html[data-theme="minimal"] .themeMenu {
+  border: 1px solid var(--minimal-frame-border);
+  border-radius: 10px;
+  box-shadow:
+    0 10px 30px rgb(15 23 42 / 0.08),
+    0 1px 4px rgb(15 23 42 / 0.04);
+}
+
+html[data-theme="minimal"] .themeMenuOption {
+  font-family: var(--font-body);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+html[data-theme="minimal"] .themeMenuOption:hover {
+  background-color: #f4f4f5;
+  color: var(--ink);
 }
 
 html[data-theme="minimal"] .authInput,

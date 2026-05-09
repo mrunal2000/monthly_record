@@ -4,6 +4,7 @@ import type { CSSProperties, ChangeEvent, FormEvent, PointerEvent } from "react"
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -304,6 +305,14 @@ const YEAR_OVERVIEW_SLOT_INDEX = months.length;
 /** Year MEDIA recap: tight grid of cells (design: 10 cols × N rows, min 6 rows). */
 const YEAR_MEDIA_GRID_COLUMNS = 10;
 const YEAR_MEDIA_GRID_MIN_ROWS = 6;
+
+/** Expands computed `grid-template-columns` token list (handles `repeat` + mixed units). */
+function readYearMediaGridColumnCount(grid: HTMLElement): number {
+  const tpl = getComputedStyle(grid).gridTemplateColumns.trim();
+  if (!tpl || tpl === "none") return YEAR_MEDIA_GRID_COLUMNS;
+  const parts = tpl.split(/\s+/).filter(Boolean);
+  return parts.length > 0 ? parts.length : YEAR_MEDIA_GRID_COLUMNS;
+}
 
 function belongsInOverviewYear(addedAtMs: number | undefined, overviewYear: number): boolean {
   if (addedAtMs === undefined) return true;
@@ -831,6 +840,7 @@ export default function Home() {
   const otpSendCooldownUntilRef = useRef(0);
   const [editMode, setEditMode] = useState(false);
   const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const [themeMenuOpen, setThemeMenuOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeName>("brutalist");
   const [categories, setCategories] = useState<Category[]>(DEFAULT_CATEGORIES);
   const [categoriesHydrated, setCategoriesHydrated] = useState(false);
@@ -867,6 +877,8 @@ export default function Home() {
   const [yearMediaPreview, setYearMediaPreview] = useState<CanvasImage | null>(null);
   const [yearMediaPeek, setYearMediaPeek] = useState<YearMediaHoverPeek | null>(null);
   const yearOverviewWorkspaceBodyRef = useRef<HTMLDivElement | null>(null);
+  const yearMediaGridRef = useRef<HTMLDivElement | null>(null);
+  const [yearMediaLayoutCols, setYearMediaLayoutCols] = useState(YEAR_MEDIA_GRID_COLUMNS);
   const imagesByBoardRef = useRef<Record<string, CanvasImage[]>>({});
   const categoriesRef = useRef<Category[]>(DEFAULT_CATEGORIES);
   const titleStableRef = useRef<Record<string, string>>({});
@@ -937,6 +949,19 @@ export default function Home() {
     return slots;
   }, [selectedYearBoard]);
 
+  useLayoutEffect(() => {
+    if (!yearMediaGridSlots) return;
+    const el = yearMediaGridRef.current;
+    if (!el) return;
+    const update = () => {
+      setYearMediaLayoutCols(readYearMediaGridColumnCount(el));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [yearMediaGridSlots]);
+
   const yearOverviewTotalCount = useMemo(
     () =>
       yearMergedBoards.reduce((sum, row) => {
@@ -997,13 +1022,15 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    if (!accountMenuOpen) return;
+    if (!accountMenuOpen && !themeMenuOpen) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setAccountMenuOpen(false);
+      if (event.key !== "Escape") return;
+      setAccountMenuOpen(false);
+      setThemeMenuOpen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [accountMenuOpen]);
+  }, [accountMenuOpen, themeMenuOpen]);
 
   useEffect(() => {
     if (!isYearOverview) {
@@ -1072,6 +1099,7 @@ export default function Home() {
 
   function updateTheme(nextTheme: ThemeName) {
     setTheme(nextTheme);
+    setThemeMenuOpen(false);
     window.localStorage.setItem("monthly-record-theme", nextTheme);
     document.documentElement.setAttribute("data-theme", nextTheme);
   }
@@ -2682,23 +2710,87 @@ export default function Home() {
       ) : null}
       <header className="mobileAppChrome" ref={mobileChromeElRef}>
         <div className="mobileAppChrome__topBand">
-          <label className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
+          <div className="themePicker" onPointerDown={(event) => event.stopPropagation()}>
             <span className="themePickerPrefix">Theme:</span>
-            <select
-              className="themeSelect"
-              aria-label="Visual theme"
-              value={theme}
-              onChange={(event) => updateTheme(event.target.value as ThemeName)}
-            >
-              {themes.map((themeOption) => (
-                <option key={themeOption.id} value={themeOption.id}>
+            <div className="themePickerSlot">
+              <button
+                type="button"
+                className="themeSelect"
+                id="theme-menu-trigger"
+                aria-label="Visual theme"
+                aria-haspopup="listbox"
+                aria-controls="theme-menu-list"
+                aria-expanded={themeMenuOpen}
+                onClick={() => setThemeMenuOpen((open) => !open)}
+              >
+                <span className="themeSelectLabel">
                   {theme === "minimal"
-                    ? formatMinimalSentenceCase(themeOption.label)
-                    : themeOption.label}
-                </option>
-              ))}
-            </select>
-          </label>
+                    ? formatMinimalSentenceCase(
+                        themes.find((t) => t.id === theme)?.label ?? "",
+                      )
+                    : (themes.find((t) => t.id === theme)?.label ?? "")}
+                </span>
+                <span className="themeSelectCaret" aria-hidden>
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    xmlns="http://www.w3.org/2000/svg"
+                  >
+                    <path
+                      d="M4 6l4 4 4-4"
+                      stroke="currentColor"
+                      strokeWidth="1.75"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </span>
+              </button>
+              {themeMenuOpen ? (
+                <>
+                  <button
+                    type="button"
+                    className="themeMenuBackdrop"
+                    aria-label="Close theme menu"
+                    tabIndex={-1}
+                    onClick={() => setThemeMenuOpen(false)}
+                  />
+                  <div
+                    id="theme-menu-list"
+                    className="themeMenu"
+                    role="listbox"
+                    aria-label="Visual theme"
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    {themes.map((themeOption) => {
+                      const label =
+                        theme === "minimal"
+                          ? formatMinimalSentenceCase(themeOption.label)
+                          : themeOption.label;
+                      const selected = theme === themeOption.id;
+                      return (
+                        <button
+                          key={themeOption.id}
+                          type="button"
+                          role="option"
+                          aria-selected={selected}
+                          className="themeMenuOption"
+                          onClick={() => updateTheme(themeOption.id)}
+                        >
+                          <span className="themeMenuOptionMark" aria-hidden>
+                            {selected ? "✓" : ""}
+                          </span>
+                          <span className="themeMenuOptionLabel">{label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : null}
+            </div>
+          </div>
           {ALLOW_LOCAL_EDIT_WITHOUT_AUTH && !user ? (
             <span className="localEditHint" role="status">
               {theme === "minimal" ? "Local · not synced" : "LOCAL · NOT SYNCED"}
@@ -2978,6 +3070,7 @@ export default function Home() {
               ) : selectedYearBoard.variant === "canvas" ? (
                 yearMediaGridSlots ? (
                   <div
+                    ref={yearMediaGridRef}
                     className="yearMediaGrid"
                     style={
                       {
@@ -2985,50 +3078,67 @@ export default function Home() {
                       } as CSSProperties
                     }
                   >
-                    {yearMediaGridSlots.map((image, slotIndex) => (
-                      <div
-                        key={image?.id ?? `year-slot-${selectedYearBoard.cat.id}-${slotIndex}`}
-                        className="yearMediaGridCell"
-                        onPointerEnter={(event) => {
-                          if (!image) return;
-                          showYearMediaPeekFromCell(
-                            image.src,
-                            event.currentTarget as HTMLElement,
-                          );
-                        }}
-                        onPointerLeave={() => setYearMediaPeek(null)}
-                      >
-                        {image ? (
-                          <button
-                            type="button"
-                            className="yearMediaGridCellButton"
-                            aria-label={
-                              theme === "minimal" ? "View image larger" : "VIEW IMAGE LARGER"
-                            }
-                            onClick={() => {
-                              setYearMediaPeek(null);
-                              setYearMediaPreview(image);
-                            }}
-                            onFocus={(event) => {
-                              const cell = (event.currentTarget as HTMLElement).closest(
-                                ".yearMediaGridCell",
-                              );
-                              if (cell instanceof HTMLElement)
-                                showYearMediaPeekFromCell(image.src, cell);
-                            }}
-                            onBlur={() => setYearMediaPeek(null)}
-                          >
-                            <img
-                              className="yearMediaGridCellImg"
-                              src={image.src}
-                              alt=""
-                              loading="lazy"
-                              draggable={false}
-                            />
-                          </button>
-                        ) : null}
-                      </div>
-                    ))}
+                    {yearMediaGridSlots.map((image, slotIndex) => {
+                      const slotCount = yearMediaGridSlots.length;
+                      const cols = Math.min(
+                        slotCount > 0 ? slotCount : 1,
+                        Math.max(1, yearMediaLayoutCols),
+                      );
+                      const isEdgeRight = slotIndex % cols === cols - 1;
+                      const isEdgeBottom = slotIndex >= slotCount - cols;
+                      return (
+                        <div
+                          key={image?.id ?? `year-slot-${selectedYearBoard.cat.id}-${slotIndex}`}
+                          className={[
+                            "yearMediaGridCell",
+                            isEdgeRight ? "yearMediaGridCell--edgeRight" : "",
+                            isEdgeBottom ? "yearMediaGridCell--edgeBottom" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          onPointerEnter={(event) => {
+                            if (!image) return;
+                            showYearMediaPeekFromCell(
+                              image.src,
+                              event.currentTarget as HTMLElement,
+                            );
+                          }}
+                          onPointerLeave={() => setYearMediaPeek(null)}
+                        >
+                          {image ? (
+                            <button
+                              type="button"
+                              className="yearMediaGridCellButton"
+                              aria-label={
+                                theme === "minimal"
+                                  ? "View image larger"
+                                  : "VIEW IMAGE LARGER"
+                              }
+                              onClick={() => {
+                                setYearMediaPeek(null);
+                                setYearMediaPreview(image);
+                              }}
+                              onFocus={(event) => {
+                                const cell = (event.currentTarget as HTMLElement).closest(
+                                  ".yearMediaGridCell",
+                                );
+                                if (cell instanceof HTMLElement)
+                                  showYearMediaPeekFromCell(image.src, cell);
+                              }}
+                              onBlur={() => setYearMediaPeek(null)}
+                            >
+                              <img
+                                className="yearMediaGridCellImg"
+                                src={image.src}
+                                alt=""
+                                loading="lazy"
+                                draggable={false}
+                              />
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
                   </div>
                 ) : null
               ) : selectedYearBoard.variant === "links" ? (
