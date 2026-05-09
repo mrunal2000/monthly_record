@@ -946,6 +946,11 @@ export default function Home() {
   const isYearOverview = activeMonthIndex === YEAR_OVERVIEW_SLOT_INDEX;
   const activeMonth = !isYearOverview ? (months[activeMonthIndex] ?? null) : null;
 
+  useEffect(() => {
+    if (!isYearOverview || activeIndex >= 0) return;
+    setActiveIndex(0);
+  }, [isYearOverview, activeIndex]);
+
   const monthIds = useMemo(() => months.map((m) => m.id), []);
 
   const yearMergedBoards = useMemo(() => {
@@ -1154,6 +1159,17 @@ export default function Home() {
   }, [theme]);
 
   function openFrame(index: number, options?: { preserveTmdbPicker?: boolean }) {
+    /** Mobile: tap the open row again to collapse everything (no frame forced open). */
+    if (!wideLayout && index === activeIndexRef.current && index >= 0) {
+      setActiveIndex(-1);
+      setSelectedImageId(null);
+      if (!options?.preserveTmdbPicker) {
+        setTmdbPickerCategoryId(null);
+        setOpenLibraryPickerCategoryId(null);
+        setNominatimPickerCategoryId(null);
+      }
+      return;
+    }
     if (index === activeIndexRef.current) {
       return;
     }
@@ -1334,10 +1350,23 @@ export default function Home() {
   }, [categories, categoriesHydrated]);
 
   useEffect(() => {
-    setActiveIndex((index) =>
-      clamp(index, 0, Math.max(0, categories.length - 1)),
-    );
-  }, [categories.length]);
+    setActiveIndex((index) => {
+      const max = Math.max(0, categories.length - 1);
+      if (wideLayout) {
+        return clamp(index < 0 ? 0 : index, 0, max);
+      }
+      if (index < 0) {
+        return -1;
+      }
+      return clamp(index, 0, max);
+    });
+  }, [categories.length, wideLayout]);
+
+  useEffect(() => {
+    if (wideLayout && activeIndex < 0) {
+      setActiveIndex(0);
+    }
+  }, [wideLayout, activeIndex]);
 
   useEffect(() => {
     if (!supabase) return;
