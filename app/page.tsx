@@ -362,14 +362,14 @@ function catalogExternalPageForImage(
   theme: ThemeName,
 ): {
   href: string;
-  controlLabel: string;
+  source: "tmdb" | "openLibrary";
   lightboxLabel: string;
 } | null {
   const tmdb = tmdbPageUrlForImage(image);
   if (tmdb) {
     return {
       href: tmdb,
-      controlLabel: "TMDB",
+      source: "tmdb",
       lightboxLabel: theme === "minimal" ? "Open on TMDB" : "OPEN ON TMDB",
     };
   }
@@ -377,9 +377,18 @@ function catalogExternalPageForImage(
   if (!ol) return null;
   return {
     href: ol,
-    controlLabel: theme === "minimal" ? "Open Library" : "OL",
+    source: "openLibrary",
     lightboxLabel: theme === "minimal" ? "Open on Open Library" : "OPEN ON OPEN LIBRARY",
   };
+}
+
+function catalogExternalLinkAriaLabel(source: "tmdb" | "openLibrary", theme: ThemeName) {
+  if (source === "tmdb") {
+    return theme === "minimal" ? "Open on TMDB (new tab)" : "OPEN ON TMDB (NEW TAB)";
+  }
+  return theme === "minimal"
+    ? "Open on Open Library (new tab)"
+    : "OPEN ON OPEN LIBRARY (NEW TAB)";
 }
 
 type OpenLibrarySearchHit = {
@@ -762,6 +771,27 @@ function ProfileMenuGlyph() {
     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" aria-hidden stroke="currentColor" strokeWidth="1.75">
       <circle cx="12" cy="8" r="4" strokeLinecap="round" />
       <path strokeLinecap="round" d="M5 21c1.76-5.25 13.33-5.06 14 0" />
+    </svg>
+  );
+}
+
+/** Up-right arrow out of a box — external / new-tab link on image tiles (not the word “TMDB”). */
+function CanvasExternalLinkGlyph() {
+  return (
+    <svg
+      width="13"
+      height="13"
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M15 3h6v6" />
+      <path d="M10 14 21 3" />
+      <path d="M18 13v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
     </svg>
   );
 }
@@ -3136,7 +3166,6 @@ export default function Home() {
               : variant === "links"
                 ? boardLinks.length
                 : boardQuotesList.length;
-          const selectedImage = boardImages.find((image) => image.id === selectedImageId);
 
           return (
             <article
@@ -3266,19 +3295,6 @@ export default function Home() {
                     </span>
                     {canEdit && variant === "canvas" ? (
                       <span className="canvasActions">
-                        {selectedImage ? (
-                          <button
-                            className="deleteSelectedButton"
-                            type="button"
-                            onPointerDown={(event) => event.stopPropagation()}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void removeImage(imageKey, selectedImage.id);
-                            }}
-                          >
-                            DELETE SELECTED
-                          </button>
-                        ) : null}
                         {item.id === TMDB_MEDIA_CATEGORY_ID && isActive ? (
                             <button
                               type="button"
@@ -3841,22 +3857,14 @@ export default function Home() {
                               >
                                 {catalogPage ? (
                                   <a
-                                    className="imageControl"
+                                    className="imageControl imageControl--external"
                                     href={catalogPage.href}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    aria-label={
-                                      theme === "minimal"
-                                        ? catalogPage.controlLabel === "TMDB"
-                                          ? "Open on TMDB (new tab)"
-                                          : "Open on Open Library (new tab)"
-                                        : catalogPage.controlLabel === "TMDB"
-                                          ? "OPEN ON TMDB (NEW TAB)"
-                                          : "OPEN ON OPEN LIBRARY (NEW TAB)"
-                                    }
+                                    aria-label={catalogExternalLinkAriaLabel(catalogPage.source, theme)}
                                     onPointerDown={(event) => event.stopPropagation()}
                                   >
-                                    {catalogPage.controlLabel}
+                                    <CanvasExternalLinkGlyph />
                                   </a>
                                 ) : null}
                                 <button

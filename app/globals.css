@@ -2030,6 +2030,15 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   color: var(--frame-color);
 }
 
+.imageControl--external {
+  padding: 4px 5px;
+  min-width: 24px;
+}
+
+.imageControl--external svg {
+  display: block;
+}
+
 .resizeHandle {
   position: absolute;
   right: -7px;
