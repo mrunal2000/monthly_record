@@ -25,6 +25,22 @@ type OpenAiChatResponse = {
   error?: unknown;
 };
 
+/** OpenAI error payloads: `{ error: { message, type, code, param } }` */
+function extractOpenAiErrorMessage(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object") return null;
+  const err = (payload as { error?: unknown }).error;
+  if (!err || typeof err !== "object") return null;
+  const o = err as Record<string, unknown>;
+  const msg = typeof o.message === "string" ? o.message.trim() : "";
+  if (!msg) return null;
+  const code = typeof o.code === "string" ? o.code.trim() : "";
+  const type = typeof o.type === "string" ? o.type.trim() : "";
+  const bits = [msg];
+  if (code) bits.push(`(code ${code})`);
+  else if (type) bits.push(`(${type})`);
+  return bits.join(" ");
+}
+
 const MODEL = process.env.OPENAI_MODEL ?? "gpt-4o-mini";
 const rawVisionCap = Number.parseInt(process.env.OPENAI_MAX_VISION_IMAGES ?? "", 10);
 const resolvedVisionCap = Number.isFinite(rawVisionCap) && rawVisionCap > 0 ? rawVisionCap : 22;
@@ -204,11 +220,17 @@ export async function POST(request: Request) {
 
     if (!res.ok) {
       const detail = data.error ?? JSON.stringify(data);
-      console.error("OpenAI chat error:", detail);
-      return NextResponse.json(
-        { error: "The model API returned an error. Check your quota and OPENAI_MODEL (vision needs a vision-capable model)." },
-        { status: 502 },
-      );
+      console.error("OpenAI chat error:", detail, "model:", MODEL);
+      const upstream = extractOpenAiErrorMessage(data);
+      const visionNote =
+        visionRefs.length > 0
+          ? " This request included board thumbnails (vision); OPENAI_MODEL must be a vision-capable chat model (e.g. gpt-4o-mini or gpt-4o)."
+          : "";
+      const base =
+        upstream ??
+        "The model API returned an error (check OpenAI billing, rate limits, and OPENAI_API_KEY).";
+      const combined = `${base}${visionNote}`.slice(0, 900);
+      return NextResponse.json({ error: combined }, { status: 502 });
     }
 
     const choice = data.choices?.[0];

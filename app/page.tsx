@@ -519,6 +519,21 @@ function formatMinimalSentenceCase(label: string) {
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 }
 
+function wrapIndex(index: number, length: number) {
+  if (length <= 0) return 0;
+  const mod = index % length;
+  return mod < 0 ? mod + length : mod;
+}
+
+function shortestSignedDistance(from: number, to: number, length: number) {
+  if (length <= 1) return 0;
+  let delta = to - from;
+  const half = Math.floor(length / 2);
+  if (delta > half) delta -= length;
+  if (delta < -half) delta += length;
+  return delta;
+}
+
 /** Paper / brutalist default to ALL CAPS on blur; links boards keep sentence case. */
 function normalizeFrameTitleOnBlur(raw: string, theme: ThemeName, categoryId: string) {
   const t = raw.trim();
@@ -868,6 +883,9 @@ export default function Home() {
   const [quoteDraft, setQuoteDraft] = useState({ text: "", source: "" });
   const [linkComposerOpen, setLinkComposerOpen] = useState(false);
   const [quoteComposerOpen, setQuoteComposerOpen] = useState(false);
+  const [bookCarouselIndexByBoard, setBookCarouselIndexByBoard] = useState<Record<string, number>>(
+    {},
+  );
   const [tmdbPickerCategoryId, setTmdbPickerCategoryId] = useState<string | null>(null);
   const [tmdbSearchQuery, setTmdbSearchQuery] = useState("");
   const [tmdbSearchResults, setTmdbSearchResults] = useState<TmdbSearchHit[]>([]);
@@ -906,6 +924,16 @@ export default function Home() {
   const pageMainElRef = useRef<HTMLElement | null>(null);
   const mobileChromeElRef = useRef<HTMLElement | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  const bookCarouselDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    boardKey: string;
+    startIndex: number;
+    total: number;
+    moved: boolean;
+  } | null>(null);
+  const suppressBookCarouselClickUntilRef = useRef(0);
   const lastDragAppliedRef = useRef<{
     imageKey: string;
     imageId: string;
@@ -2421,6 +2449,66 @@ export default function Home() {
     if (selectedImageId === imageId) setSelectedImageId(null);
   }
 
+  function onBookCarouselPointerDown(
+    event: PointerEvent<HTMLDivElement>,
+    imageKey: string,
+    imageCount: number,
+    currentIndex: number,
+  ) {
+    if (imageCount <= 1) return;
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      target.closest(".bookCarouselControls, .imageControl, button, a")
+    ) {
+      return;
+    }
+    event.currentTarget.setPointerCapture(event.pointerId);
+    bookCarouselDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      boardKey: imageKey,
+      startIndex: currentIndex,
+      total: imageCount,
+      moved: false,
+    };
+  }
+
+  function onBookCarouselPointerMove(event: PointerEvent<HTMLDivElement>) {
+    const drag = bookCarouselDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.moved && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+      drag.moved = true;
+    }
+  }
+
+  function finishBookCarouselDrag(event: PointerEvent<HTMLDivElement>) {
+    const drag = bookCarouselDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    try {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    } catch {
+      // ignore if already released
+    }
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    const isSwipe = Math.abs(dx) > 26 && Math.abs(dx) > Math.abs(dy);
+    if (isSwipe) {
+      const step = dx < 0 ? 1 : -1;
+      setBookCarouselIndexByBoard((prev) => ({
+        ...prev,
+        [drag.boardKey]: wrapIndex(drag.startIndex + step, drag.total),
+      }));
+      suppressBookCarouselClickUntilRef.current = Date.now() + 180;
+    }
+    bookCarouselDragRef.current = null;
+  }
+
   async function persistLinkToSupabase(boardKey: string, entry: LinkEntry) {
     if (!supabase || !user || !canEdit) return;
     setSaveStatus("SAVING");
@@ -3312,6 +3400,12 @@ export default function Home() {
           const boardImages = imagesByBoard[imageKey] ?? [];
           const boardLinks = linksByBoard[imageKey] ?? [];
           const boardQuotesList = quotesByBoard[imageKey] ?? [];
+          const isBooksCarousel =
+            variant === "canvas" && item.id === OPEN_LIBRARY_BOOKS_CATEGORY_ID;
+          const bookCarouselIndex = wrapIndex(
+            bookCarouselIndexByBoard[imageKey] ?? 0,
+            boardImages.length,
+          );
           const boardItemCount =
             variant === "canvas"
               ? boardImages.length
@@ -3964,105 +4058,201 @@ export default function Home() {
                           if (canEdit) event.preventDefault();
                         }}
                       >
-                      {boardImages.map((image) => {
-                        const catalogPage = catalogExternalPageForImage(image, theme);
-                        const canvasImg = (
-                          <img className="canvasImage" src={image.src} alt="" draggable={false} />
-                        );
-                        return (
-                        <span
-                          key={image.id}
-                          className="imageItem"
-                          data-selected={canEdit && selectedImageId === image.id}
-                          onClick={(event) => {
-                            if (canEdit) event.stopPropagation();
-                          }}
-                          style={
-                            {
-                              left: `${image.x}%`,
-                              top: `${image.y}%`,
-                              width: `${image.width}%`,
-                              "--image-rotation": `${image.rotation}deg`,
-                            } as CSSProperties
-                          }
-                          onPointerDown={(event) => startDrag(event, imageKey, image.id)}
-                        >
-                          {!canEdit && catalogPage ? (
-                            <a
-                              className="canvasImageTmdbLink"
-                              href={catalogPage.href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={(event) => event.stopPropagation()}
-                              onPointerDown={(event) => event.stopPropagation()}
+                        {isBooksCarousel ? (
+                          boardImages.length > 0 ? (
+                            <div
+                              className="bookCarousel"
+                              onPointerDown={(event) =>
+                                onBookCarouselPointerDown(
+                                  event,
+                                  imageKey,
+                                  boardImages.length,
+                                  bookCarouselIndex,
+                                )
+                              }
+                              onPointerMove={onBookCarouselPointerMove}
+                              onPointerUp={finishBookCarouselDrag}
+                              onPointerCancel={finishBookCarouselDrag}
                             >
-                              {canvasImg}
-                            </a>
-                          ) : (
-                            canvasImg
-                          )}
-                          {canEdit ? (
-                            <>
+                              {boardImages.map((image, coverIndex) => {
+                                const distance = shortestSignedDistance(
+                                  bookCarouselIndex,
+                                  coverIndex,
+                                  boardImages.length,
+                                );
+                                const hidden = Math.abs(distance) > 3;
+                                const catalogPage = catalogExternalPageForImage(image, theme);
+                                const active = coverIndex === bookCarouselIndex;
+                                return (
+                                  <span
+                                    key={image.id}
+                                    className="bookCarouselCard"
+                                    data-active={active ? "true" : undefined}
+                                    data-hidden={hidden ? "true" : undefined}
+                                    style={
+                                      {
+                                        "--book-offset": distance,
+                                      } as CSSProperties
+                                    }
+                                    onClick={() => {
+                                      if (Date.now() < suppressBookCarouselClickUntilRef.current) return;
+                                      setBookCarouselIndexByBoard((prev) => ({
+                                        ...prev,
+                                        [imageKey]: coverIndex,
+                                      }));
+                                    }}
+                                  >
+                                    <img
+                                      className="bookCarouselCardImg"
+                                      src={image.src}
+                                      alt=""
+                                      draggable={false}
+                                    />
+                                    {canEdit && active ? (
+                                      <span
+                                        className="bookCarouselControls"
+                                        onPointerDown={(event) => event.stopPropagation()}
+                                      >
+                                        {catalogPage ? (
+                                          <a
+                                            className="imageControl imageControl--external"
+                                            href={catalogPage.href}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            aria-label={catalogExternalLinkAriaLabel(
+                                              catalogPage.source,
+                                              theme,
+                                            )}
+                                          >
+                                            <CanvasExternalLinkGlyph />
+                                          </a>
+                                        ) : null}
+                                        <button
+                                          className="imageControl"
+                                          type="button"
+                                          aria-label="Delete image"
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            void removeImage(imageKey, image.id);
+                                          }}
+                                        >
+                                          x
+                                        </button>
+                                      </span>
+                                    ) : null}
+                                  </span>
+                                );
+                              })}
+                              {boardImages.length > 1 ? (
+                                <div className="bookCarouselNav">
+                                  <span className="bookCarouselCounter" aria-live="polite">
+                                    {bookCarouselIndex + 1} / {boardImages.length}
+                                  </span>
+                                </div>
+                              ) : null}
+                            </div>
+                          ) : null
+                        ) : (
+                          boardImages.map((image) => {
+                            const catalogPage = catalogExternalPageForImage(image, theme);
+                            const canvasImg = (
+                              <img className="canvasImage" src={image.src} alt="" draggable={false} />
+                            );
+                            return (
                               <span
-                                className="imageControls"
-                                onPointerDown={(event) => event.stopPropagation()}
+                                key={image.id}
+                                className="imageItem"
+                                data-selected={canEdit && selectedImageId === image.id}
+                                onClick={(event) => {
+                                  if (canEdit) event.stopPropagation();
+                                }}
+                                style={
+                                  {
+                                    left: `${image.x}%`,
+                                    top: `${image.y}%`,
+                                    width: `${image.width}%`,
+                                    "--image-rotation": `${image.rotation}deg`,
+                                  } as CSSProperties
+                                }
+                                onPointerDown={(event) => startDrag(event, imageKey, image.id)}
                               >
-                                {catalogPage ? (
+                                {!canEdit && catalogPage ? (
                                   <a
-                                    className="imageControl imageControl--external"
+                                    className="canvasImageTmdbLink"
                                     href={catalogPage.href}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    aria-label={catalogExternalLinkAriaLabel(catalogPage.source, theme)}
+                                    onClick={(event) => event.stopPropagation()}
                                     onPointerDown={(event) => event.stopPropagation()}
                                   >
-                                    <CanvasExternalLinkGlyph />
+                                    {canvasImg}
                                   </a>
+                                ) : (
+                                  canvasImg
+                                )}
+                                {canEdit ? (
+                                  <>
+                                    <span
+                                      className="imageControls"
+                                      onPointerDown={(event) => event.stopPropagation()}
+                                    >
+                                      {catalogPage ? (
+                                        <a
+                                          className="imageControl imageControl--external"
+                                          href={catalogPage.href}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          aria-label={catalogExternalLinkAriaLabel(catalogPage.source, theme)}
+                                          onPointerDown={(event) => event.stopPropagation()}
+                                        >
+                                          <CanvasExternalLinkGlyph />
+                                        </a>
+                                      ) : null}
+                                      <button
+                                        className="imageControl"
+                                        type="button"
+                                        aria-label="Rotate left"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          rotateImage(imageKey, image.id, -15);
+                                        }}
+                                      >
+                                        -15
+                                      </button>
+                                      <button
+                                        className="imageControl"
+                                        type="button"
+                                        aria-label="Rotate right"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          rotateImage(imageKey, image.id, 15);
+                                        }}
+                                      >
+                                        +15
+                                      </button>
+                                      <button
+                                        className="imageControl"
+                                        type="button"
+                                        aria-label="Delete image"
+                                        onClick={(event) => {
+                                          event.stopPropagation();
+                                          void removeImage(imageKey, image.id);
+                                        }}
+                                      >
+                                        x
+                                      </button>
+                                    </span>
+                                    <span
+                                      className="resizeHandle"
+                                      aria-hidden="true"
+                                      onPointerDown={(event) => startResize(event, imageKey, image.id)}
+                                    />
+                                  </>
                                 ) : null}
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Rotate left"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    rotateImage(imageKey, image.id, -15);
-                                  }}
-                                >
-                                  -15
-                                </button>
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Rotate right"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    rotateImage(imageKey, image.id, 15);
-                                  }}
-                                >
-                                  +15
-                                </button>
-                                <button
-                                  className="imageControl"
-                                  type="button"
-                                  aria-label="Delete image"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void removeImage(imageKey, image.id);
-                                  }}
-                                >
-                                  x
-                                </button>
                               </span>
-                              <span
-                                className="resizeHandle"
-                                aria-hidden="true"
-                                onPointerDown={(event) => startResize(event, imageKey, image.id)}
-                              />
-                            </>
-                          ) : null}
-                        </span>
-                        );
-                      })}
+                            );
+                          })
+                        )}
                       </span>
                     </div>
                   ) : variant === "links" ? (

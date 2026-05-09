@@ -1832,7 +1832,9 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   min-height: 0;
   height: 100%;
   border: 1px solid color-mix(in srgb, currentColor 52%, transparent);
-  overflow: hidden;
+  /* Let toolbar / resize chrome extend past the canvas edge; `overflow: hidden` clipped controls
+     when images sat flush with the top or bottom-right (see .imageControls, .resizeHandle). */
+  overflow: visible;
   background:
     linear-gradient(color-mix(in srgb, currentColor 38%, transparent) 1px, transparent 1px),
     linear-gradient(
@@ -1846,6 +1848,103 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   opacity: 0.9;
   touch-action: none;
   overscroll-behavior: contain;
+}
+
+.bookCarousel {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  perspective: 1200px;
+  isolation: isolate;
+  cursor: grab;
+}
+
+.bookCarouselCard {
+  --book-offset-abs: max(var(--book-offset), calc(var(--book-offset) * -1));
+  position: absolute;
+  width: clamp(96px, 30%, 184px);
+  aspect-ratio: 2 / 3;
+  transform-style: preserve-3d;
+  transform-origin: center center;
+  transition:
+    transform 260ms cubic-bezier(0.215, 0.61, 0.355, 1),
+    opacity 220ms cubic-bezier(0.215, 0.61, 0.355, 1),
+    filter 220ms cubic-bezier(0.215, 0.61, 0.355, 1);
+  will-change: transform, opacity;
+  transform:
+    translateX(calc(var(--book-offset) * 52px))
+    translateZ(calc((3 - var(--book-offset-abs)) * 18px))
+    rotateY(calc(var(--book-offset) * -18deg))
+    scale(calc(1 - (var(--book-offset-abs) * 0.06)));
+  opacity: calc(1 - (var(--book-offset-abs) * 0.17));
+  z-index: calc(40 - var(--book-offset-abs));
+  filter: saturate(calc(1 - (var(--book-offset-abs) * 0.14)));
+  cursor: pointer;
+}
+
+.bookCarousel:active {
+  cursor: grabbing;
+}
+
+.bookCarouselCard[data-hidden="true"] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.bookCarouselCardImg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border: 1px solid currentColor;
+  box-shadow: 0 14px 26px rgb(0 0 0 / 0.26);
+}
+
+.bookCarouselCard[data-active="true"] {
+  z-index: 48;
+}
+
+.bookCarouselControls {
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 10px);
+  transform: translateX(-50%);
+  display: flex;
+  gap: 4px;
+}
+
+.bookCarouselNav {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  z-index: 60;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid color-mix(in srgb, currentColor 42%, transparent);
+  background: color-mix(in srgb, var(--frame-color) 86%, transparent);
+}
+
+.bookCarouselCounter {
+  min-width: 40px;
+  text-align: center;
+  font-family: var(--font-chrome, var(--font-body));
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 767px) {
+  .bookCarouselCard {
+    width: clamp(112px, 42vw, 196px);
+  }
 }
 
 .textBoardSurface {
@@ -2145,6 +2244,10 @@ html[data-theme="minimal"] .yearCategoryTab:focus-visible {
   touch-action: none;
   -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+.imageItem[data-selected="true"] {
+  z-index: 2;
 }
 
 .imageItem:active {
@@ -2547,6 +2650,18 @@ html[data-theme="minimal"] .frame .imageControl {
 html[data-theme="minimal"] .frame .imageControl:hover {
   background: rgb(0 0 0 / 0.05);
   color: var(--ink);
+}
+
+html[data-theme="minimal"] .bookCarouselNav {
+  border-color: var(--minimal-frame-border);
+  border-radius: 7px;
+  background: var(--minimal-frame-fill);
+}
+
+html[data-theme="minimal"] .bookCarouselCounter {
+  font-family: var(--font-body);
+  font-size: 11px;
+  letter-spacing: 0;
 }
 
 html[data-theme="minimal"] .frame .canvasImage {
@@ -3740,6 +3855,10 @@ html[data-theme="minimal"] .aiChatMarkdown__img {
 
   .accordion {
     animation: none;
+  }
+
+  .bookCarouselCard {
+    transition: none;
   }
 }
 
